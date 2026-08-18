@@ -1,0 +1,85 @@
+/* app/globals.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --foreground-rgb: 30, 41, 35;
+    --background-start: #fbf9f5;
+    --background-end: #f4f0ea;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  body {
+    color: rgb(var(--foreground-rgb));
+    background-color: var(--background-start);
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-[#2d6a4f] text-white px-5 py-2.5 rounded-full hover:bg-[#1b4332] active:scale-95 transition-all duration-200 font-medium shadow-md hover:shadow-lg flex items-center justify-center gap-2;
+  }
+  
+  .btn-accent {
+    @apply bg-[#f4a261] text-white px-5 py-2.5 rounded-full hover:bg-[#e76f51] active:scale-95 transition-all duration-200 font-medium shadow-md hover:shadow-lg flex items-center justify-center gap-2;
+  }
+
+  .btn-secondary {
+    @apply bg-white text-[#2d6a4f] border border-[#2d6a4f]/20 px-5 py-2.5 rounded-full hover:bg-[#f0f7f3] transition-all duration-200 font-medium;
+  }
+  
+  .card-natural {
+    @apply bg-white rounded-2xl shadow-natural hover:shadow-natural-lg border border-[#e8efe9] transition-all duration-300;
+  }
+  
+  .input-field {
+    @apply w-full px-4 py-2.5 bg-white border border-[#d8e5db] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#52b788] focus:border-transparent transition duration-200 text-gray-800;
+  }
+}
+
+/* Custom modern scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1ede6;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #b7d1be;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #74c69d;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  
+  .page-break {
+    page-break-after: always;
+  }
+}
+
+/* Ajustes para o Leaflet no Next.js */
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+}
+
+.leaflet-control-zoom {
+  z-index: 10 !important;
+}

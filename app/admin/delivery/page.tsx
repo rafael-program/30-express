@@ -2,294 +2,266 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { supabase } from '@/lib/supabase/client';
 import {
-  Plus,
+  Truck,
   Search,
   Edit,
   Trash2,
-  Truck,
+  X,
   ChevronLeft,
   ChevronRight,
-  X,
+  User,
   Phone,
-  Mail,
-  FileText,
   CheckCircle,
   XCircle,
-  AlertCircle,
-  UserPlus,
-  Star,
-  Eye,
-  User,
-  Key,
-  EyeOff
 } from 'lucide-react';
 
+// ============================================================
+// TIPOS
+// ============================================================
 type DeliveryAgent = {
   id: string;
-  full_name: string;
+  user_id: string;
+  name: string;
   phone: string;
-  email: string;
-  bi_number: string;
-  bi_file_url: string;
-  photo_url: string;
-  vehicle: string;
-  vehicle_plate: string;
-  status: 'active' | 'inactive' | 'suspended';
-  is_available: boolean;
-  total_deliveries: number;
-  rating: number;
+  vehicle_type: string | null;
+  plate: string | null;
+  status: string;
+  current_lat: number | null;
+  current_lng: number | null;
+  avatar_url: string | null;
   created_at: string;
   updated_at: string;
 };
 
+type AgentForm = {
+  name: string;
+  phone: string;
+  vehicle_type: string;
+  plate: string;
+  status: string;
+};
+
+// ============================================================
+// CONFIG
+// ============================================================
+const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
+  available: { label: 'Disponível', color: 'bg-green-100 text-green-700' },
+  busy: { label: 'Ocupado', color: 'bg-orange-100 text-orange-700' },
+  offline: { label: 'Offline', color: 'bg-gray-100 text-gray-500' },
+};
+
+const VEHICLE_OPTIONS = [
+  { value: 'motorcycle', label: 'Moto' },
+  { value: 'car', label: 'Carro' },
+  { value: 'bicycle', label: 'Bicicleta' },
+  { value: 'foot', label: 'A pé' },
+];
+
+// ============================================================
+// COMPONENTE
+// ============================================================
 export default function AdminDeliveryPage() {
   const [agents, setAgents] = useState<DeliveryAgent[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [showModal, setShowModal] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [selectedAgent, setSelectedAgent] = useState<DeliveryAgent | null>(null);
-  const [showDetailModal, setShowDetailModal] = useState(false);
-  const [formData, setFormData] = useState({
-    full_name: '',
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Modal
+  const [showModal, setShowModal] = useState(false);
+  const [editingAgent, setEditingAgent] = useState<DeliveryAgent | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [formData, setFormData] = useState<AgentForm>({
+    name: '',
     phone: '',
-    email: '',
-    password: '',
-    bi_number: '',
-    vehicle: '',
-    vehicle_plate: '',
-    status: 'active'
+    vehicle_type: 'motorcycle',
+    plate: '',
+    status: 'available',
   });
-  const [uploading, setUploading] = useState(false);
 
   const ITEMS_PER_PAGE = 10;
 
+  // ============================================================
+  // BUSCAR ENTREGADORES
+  // ============================================================
   useEffect(() => {
+    let cancelled = false;
+
+    const fetchAgents = async () => {
+      setLoading(true);
+      try {
+        let query = supabase
+          .from('delivery_agents')
+          .select('*', { count: 'exact' });
+
+        if (statusFilter !== 'all') {
+          query = query.eq('status', statusFilter);
+        }
+
+        if (searchTerm) {
+          query = query.or(
+            `name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%,plate.ilike.%${searchTerm}%`
+          );
+        }
+
+        const from = (currentPage - 1) * ITEMS_PER_PAGE;
+        const to = from + ITEMS_PER_PAGE - 1;
+
+        const { data, error, count } = await query
+          .range(from, to)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        if (!cancelled) {
+          setAgents(data || []);
+          setTotalPages(Math.ceil((count || 0) / ITEMS_PER_PAGE));
+        }
+      } catch (error) {
+        console.error('Erro ao buscar entregadores:', error);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
     fetchAgents();
-  }, [currentPage, statusFilter, searchTerm]);
 
-  const fetchAgents = async () => {
-    setLoading(true);
-    try {
-      let query = supabase
-        .from('delivery_agents')
-        .select('*', { count: 'exact' });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentPage, statusFilter, searchTerm, refreshKey]);
 
-      if (statusFilter !== 'all') {
-        query = query.eq('status', statusFilter);
-      }
-
-      if (searchTerm) {
-        query = query.or(`full_name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%,bi_number.ilike.%${searchTerm}%`);
-      }
-
-      const from = (currentPage - 1) * ITEMS_PER_PAGE;
-      const to = from + ITEMS_PER_PAGE - 1;
-
-      const { data, error, count } = await query
-        .range(from, to)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      setAgents(data || []);
-      setTotalPages(Math.ceil((count || 0) / ITEMS_PER_PAGE));
-    } catch (error) {
-      console.error('Erro ao buscar entregadores:', error);
-    } finally {
-      setLoading(false);
-    }
+  // ============================================================
+  // ABRIR MODAIS
+  // ============================================================
+  const openCreateModal = () => {
+    setEditingAgent(null);
+    setFormData({
+      name: '',
+      phone: '',
+      vehicle_type: 'motorcycle',
+      plate: '',
+      status: 'available',
+    });
+    setShowModal(true);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setUploading(true);
+  const openEditModal = (agent: DeliveryAgent) => {
+    setEditingAgent(agent);
+    setFormData({
+      name: agent.name || '',
+      phone: agent.phone || '',
+      vehicle_type: agent.vehicle_type || 'motorcycle',
+      plate: agent.plate || '',
+      status: agent.status || 'available',
+    });
+    setShowModal(true);
+  };
 
+  // ============================================================
+  // SALVAR
+  // ============================================================
+  const handleSave = async () => {
+    if (!formData.name.trim() || !formData.phone.trim()) {
+      alert('Por favor, preencha nome e telefone');
+      return;
+    }
+
+    setSaving(true);
     try {
-      // 🔥 1. Criar usuário no Auth
-      const { data: userData, error: userError } = await supabase.auth.admin.createUser({
-        email: formData.email,
-        password: formData.password,
-        user_metadata: {
-          full_name: formData.full_name,
-          role: 'delivery'
-        }
-      });
-
-      if (userError) {
-        console.error('❌ Erro ao criar usuário:', userError);
-        alert(`Erro ao criar usuário: ${userError.message}`);
-        setUploading(false);
-        return;
-      }
-
-      console.log('✅ Usuário criado:', userData);
-
-      // 🔥 2. Criar perfil do entregador
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .insert({
-          id: userData.user.id,
-          full_name: formData.full_name,
-          phone: formData.phone,
-          role: 'delivery'
-        });
-
-      if (profileError) {
-        console.error('❌ Erro ao criar perfil:', profileError);
-        alert(`Erro ao criar perfil: ${profileError.message}`);
-        setUploading(false);
-        return;
-      }
-
-      // 🔥 3. Criar entregador
-      const agentData = {
-        user_id: userData.user.id,
-        full_name: formData.full_name,
-        phone: formData.phone,
-        email: formData.email,
-        bi_number: formData.bi_number,
-        vehicle: formData.vehicle || '',
-        vehicle_plate: formData.vehicle_plate || '',
+      const payload = {
+        name: formData.name.trim(),
+        phone: formData.phone.trim(),
+        vehicle_type: formData.vehicle_type || null,
+        plate: formData.plate.trim() || null,
         status: formData.status,
-        is_available: true,
-        total_deliveries: 0,
-        rating: 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
       };
 
-      console.log('📤 Criando entregador:', agentData);
-
-      const { data, error } = await supabase
-        .from('delivery_agents')
-        .insert([agentData])
-        .select();
-
-      if (error) {
-        console.error('❌ Erro ao criar entregador:', error);
-        alert(`Erro ao criar entregador: ${error.message}`);
-        setUploading(false);
-        return;
+      if (editingAgent) {
+        const { error } = await supabase
+          .from('delivery_agents')
+          .update(payload)
+          .eq('id', editingAgent.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('delivery_agents')
+          .insert([payload]);
+        if (error) throw error;
       }
 
-      console.log('✅ Entregador criado:', data);
-      alert('✅ Entregador criado com sucesso!\n\nCredenciais:\nEmail: ' + formData.email + '\nSenha: ' + formData.password);
       setShowModal(false);
-      resetForm();
-      fetchAgents();
-
-    } catch (error: any) {
-      console.error('Erro ao criar entregador:', error);
-      alert(`❌ Erro: ${error.message}`);
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleUpdateStatus = async (id: string, status: string) => {
-    try {
-      const { error } = await supabase
-        .from('delivery_agents')
-        .update({ 
-          status, 
-          updated_at: new Date().toISOString() 
-        })
-        .eq('id', id);
-
-      if (error) throw error;
-      fetchAgents();
-      alert('✅ Status atualizado!');
+      setRefreshKey((prev) => prev + 1);
+      alert(
+        editingAgent
+          ? '✅ Entregador atualizado!'
+          : '✅ Entregador criado!'
+      );
     } catch (error) {
-      console.error('Erro ao atualizar status:', error);
-      alert('❌ Erro ao atualizar status');
+      console.error('Erro ao salvar entregador:', error);
+      alert('❌ Erro ao salvar entregador');
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Tem certeza que deseja excluir este entregador?')) return;
+  // ============================================================
+  // DELETAR
+  // ============================================================
+  const handleDelete = async (agent: DeliveryAgent) => {
+    if (!confirm(`Excluir o entregador "${agent.name}"?`)) return;
 
     try {
       const { error } = await supabase
         .from('delivery_agents')
         .delete()
-        .eq('id', id);
-
+        .eq('id', agent.id);
       if (error) throw error;
-      fetchAgents();
+      setRefreshKey((prev) => prev + 1);
       alert('✅ Entregador excluído!');
     } catch (error) {
-      console.error('Erro ao excluir:', error);
+      console.error('Erro ao excluir entregador:', error);
       alert('❌ Erro ao excluir entregador');
     }
   };
 
-  const resetForm = () => {
-    setFormData({
-      full_name: '',
-      phone: '',
-      email: '',
-      password: '',
-      bi_number: '',
-      vehicle: '',
-      vehicle_plate: '',
-      status: 'active'
-    });
+  // ============================================================
+  // FORMATADORES
+  // ============================================================
+  const getStatusBadge = (status: string) => {
+    return STATUS_CONFIG[status] || STATUS_CONFIG.offline;
   };
 
-  const getStatusColor = (status: string) => {
-    const colors = {
-      active: 'bg-green-100 text-green-700',
-      inactive: 'bg-gray-100 text-gray-700',
-      suspended: 'bg-red-100 text-red-700'
-    };
-    return colors[status as keyof typeof colors] || colors.inactive;
+  const getVehicleLabel = (value: string | null) => {
+    const vehicle = VEHICLE_OPTIONS.find((v) => v.value === value);
+    return vehicle?.label || value || 'N/A';
   };
 
-  const getStatusLabel = (status: string) => {
-    const labels = {
-      active: 'Ativo',
-      inactive: 'Inativo',
-      suspended: 'Suspenso'
-    };
-    return labels[status as keyof typeof labels] || status;
-  };
-
-  const getStatusIcon = (status: string) => {
-    const icons = {
-      active: CheckCircle,
-      inactive: XCircle,
-      suspended: AlertCircle
-    };
-    return icons[status as keyof typeof icons] || XCircle;
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-AO', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  if (loading) {
+  // ============================================================
+  // LOADING
+  // ============================================================
+  if (loading && agents.length === 0) {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-[#2d6a4f] mx-auto"></div>
-          <p className="mt-4 text-[#2d6a4f] font-medium">Carregando entregadores...</p>
+          <p className="mt-4 text-[#2d6a4f] font-medium">
+            Carregando entregadores...
+          </p>
         </div>
       </div>
     );
   }
 
+  // ============================================================
+  // RENDER
+  // ============================================================
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -299,16 +271,15 @@ export default function AdminDeliveryPage() {
             <Truck className="w-8 h-8" />
             Entregadores
           </h1>
-          <p className="text-gray-500 mt-1">Gerencie sua equipe de entregadores</p>
+          <p className="text-gray-500 mt-1">
+            Gerencie a equipe de entregadores
+          </p>
         </div>
         <button
-          onClick={() => {
-            resetForm();
-            setShowModal(true);
-          }}
-          className="px-6 py-3 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition flex items-center gap-2 shadow-lg hover:shadow-xl"
+          onClick={openCreateModal}
+          className="px-4 py-2 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition flex items-center gap-2"
         >
-          <UserPlus className="w-5 h-5" />
+          <User className="w-4 h-4" />
           Novo Entregador
         </button>
       </div>
@@ -320,150 +291,117 @@ export default function AdminDeliveryPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Buscar por nome, telefone ou BI..."
+              placeholder="Buscar por nome, telefone ou placa..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setCurrentPage(1);
+              }}
               className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
             />
           </div>
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setCurrentPage(1);
+            }}
             className="px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
           >
             <option value="all">Todos os Status</option>
-            <option value="active">Ativos</option>
-            <option value="inactive">Inativos</option>
-            <option value="suspended">Suspensos</option>
+            <option value="available">Disponível</option>
+            <option value="busy">Ocupado</option>
+            <option value="offline">Offline</option>
           </select>
-          <button
-            onClick={fetchAgents}
-            className="px-6 py-2 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition flex items-center gap-2"
-          >
-            Filtrar
-          </button>
         </div>
       </div>
 
-      {/* Lista de Entregadores */}
+      {/* Tabela */}
       <div className="bg-white rounded-3xl shadow-lg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-[#f8f6f4]">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entregador</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contato</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Veículo</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entregas</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Avaliação</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Entregador
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Contacto
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Veículo
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Ações
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {agents.map((agent) => {
-                const StatusIcon = getStatusIcon(agent.status);
+                const statusBadge = getStatusBadge(agent.status);
                 return (
                   <tr key={agent.id} className="hover:bg-gray-50 transition">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-[#f0f4f0] rounded-full overflow-hidden flex-shrink-0">
-                          {agent.photo_url ? (
-                            <img
-                              src={agent.photo_url}
-                              alt={agent.full_name}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-xl bg-[#2d6a4f] text-white font-bold">
-                              {agent.full_name[0]?.toUpperCase() || 'E'}
-                            </div>
+                        {agent.avatar_url ? (
+                          <Image
+                            src={agent.avatar_url}
+                            alt={agent.name}
+                            width={40}
+                            height={40}
+                            className="w-10 h-10 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 bg-[#f0f4f0] rounded-full flex items-center justify-center text-sm font-bold text-[#2d6a4f]">
+                            {agent.name?.[0]?.toUpperCase() || 'E'}
+                          </div>
+                        )}
+                        <div>
+                          <p className="font-medium text-gray-800">
+                            {agent.name}
+                          </p>
+                          {agent.plate && (
+                            <p className="text-xs text-gray-400 font-mono">
+                              {agent.plate}
+                            </p>
                           )}
                         </div>
-                        <div>
-                          <p className="font-medium text-gray-800">{agent.full_name}</p>
-                          <p className="text-sm text-gray-500">BI: {agent.bi_number}</p>
-                        </div>
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="space-y-1">
-                        <p className="text-sm text-gray-600 flex items-center gap-1">
-                          <Phone className="w-3 h-3" />
-                          {agent.phone}
-                        </p>
-                        <p className="text-sm text-gray-600 flex items-center gap-1">
-                          <Mail className="w-3 h-3" />
-                          {agent.email || '-'}
-                        </p>
-                      </div>
+                      <p className="text-sm text-gray-600 flex items-center gap-1">
+                        <Phone className="w-3 h-3" />
+                        {agent.phone || '-'}
+                      </p>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600">
+                      {getVehicleLabel(agent.vehicle_type)}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="space-y-1">
-                        <p className="text-sm text-gray-600">{agent.vehicle || '-'}</p>
-                        <p className="text-xs text-gray-400">{agent.vehicle_plate || '-'}</p>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-col gap-1">
-                        <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(agent.status)}`}>
-                          <StatusIcon className="w-3 h-3" />
-                          {getStatusLabel(agent.status)}
-                        </span>
-                        {agent.is_available && (
-                          <span className="text-xs text-green-600 flex items-center gap-1">
-                            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                            Disponível
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-center font-medium text-gray-700">
-                      {agent.total_deliveries || 0}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1">
-                        <Star className="w-4 h-4 fill-[#f4a261] text-[#f4a261]" />
-                        <span className="font-medium">{agent.rating?.toFixed(1) || '0.0'}</span>
-                      </div>
+                      <span
+                        className={`px-3 py-1 rounded-full text-xs font-medium ${statusBadge.color}`}
+                      >
+                        {statusBadge.label}
+                      </span>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => {
-                            setSelectedAgent(agent);
-                            setShowDetailModal(true);
-                          }}
+                          onClick={() => openEditModal(agent)}
                           className="p-2 hover:bg-gray-100 rounded-lg transition"
-                          title="Ver detalhes"
+                          title="Editar"
                         >
-                          <Eye className="w-4 h-4 text-gray-400 hover:text-gray-600" />
+                          <Edit className="w-4 h-4 text-gray-400 hover:text-[#2d6a4f]" />
                         </button>
-                        {agent.bi_file_url && (
-                          <a
-                            href={agent.bi_file_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="p-2 hover:bg-gray-100 rounded-lg transition"
-                            title="Ver BI"
-                          >
-                            <FileText className="w-4 h-4 text-gray-400 hover:text-gray-600" />
-                          </a>
-                        )}
-                        <select
-                          value={agent.status}
-                          onChange={(e) => handleUpdateStatus(agent.id, e.target.value)}
-                          className="text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-                        >
-                          <option value="active">Ativo</option>
-                          <option value="inactive">Inativo</option>
-                          <option value="suspended">Suspenso</option>
-                        </select>
                         <button
-                          onClick={() => handleDelete(agent.id)}
+                          onClick={() => handleDelete(agent)}
                           className="p-2 hover:bg-gray-100 rounded-lg transition"
+                          title="Excluir"
                         >
-                          <Trash2 className="w-4 h-4 text-red-400 hover:text-red-600" />
+                          <Trash2 className="w-4 h-4 text-gray-400 hover:text-red-600" />
                         </button>
                       </div>
                     </td>
@@ -474,18 +412,15 @@ export default function AdminDeliveryPage() {
           </table>
         </div>
 
-        {agents.length === 0 && (
+        {agents.length === 0 && !loading && (
           <div className="text-center py-12">
-            <div className="text-6xl mb-4">🚚</div>
-            <p className="text-gray-500">Nenhum entregador cadastrado</p>
+            <div className="text-6xl mb-4">🛵</div>
+            <p className="text-gray-500">Nenhum entregador encontrado</p>
             <button
-              onClick={() => {
-                resetForm();
-                setShowModal(true);
-              }}
-              className="mt-4 px-6 py-2 bg-[#2d6a4f] text-white rounded-full hover:bg-[#1b4332] transition"
+              onClick={openCreateModal}
+              className="inline-block mt-4 px-6 py-2 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition"
             >
-              Cadastrar primeiro entregador
+              Adicionar Entregador
             </button>
           </div>
         )}
@@ -498,14 +433,18 @@ export default function AdminDeliveryPage() {
             </div>
             <div className="flex gap-2">
               <button
-                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                onClick={() =>
+                  setCurrentPage((prev) => Math.max(1, prev - 1))
+                }
                 disabled={currentPage === 1}
                 className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition disabled:opacity-50"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
               <button
-                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                onClick={() =>
+                  setCurrentPage((prev) => Math.min(totalPages, prev + 1))
+                }
                 disabled={currentPage === totalPages}
                 className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition disabled:opacity-50"
               >
@@ -516,285 +455,149 @@ export default function AdminDeliveryPage() {
         )}
       </div>
 
-      {/* Modal de Criar Entregador */}
+      {/* Modal Criar/Editar */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-[#2d6a4f]">Novo Entregador</h2>
+              <h2 className="text-2xl font-bold text-[#2d6a4f] flex items-center gap-2">
+                <Truck className="w-6 h-6" />
+                {editingAgent ? 'Editar Entregador' : 'Novo Entregador'}
+              </h2>
               <button
-                onClick={() => {
-                  setShowModal(false);
-                  resetForm();
-                }}
+                onClick={() => setShowModal(false)}
                 className="p-2 hover:bg-gray-100 rounded-full transition"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo *</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.full_name}
-                    onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Telefone *</label>
-                  <input
-                    type="tel"
-                    required
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-                    placeholder="+244 936 953 381"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
-                  <input
-                    type="email"
-                    required
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Senha *</label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      required
-                      value={formData.password}
-                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f] pr-10"
-                      placeholder="Mínimo 6 caracteres"
-                      minLength={6}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
+            <div className="space-y-4">
+              {/* Nome */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Número do BI *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Nome *
+                </label>
                 <input
                   type="text"
-                  required
-                  value={formData.bi_number}
-                  onChange={(e) => setFormData({ ...formData, bi_number: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-                  placeholder="00000000AZ0"
+                  value={formData.name}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      name: e.target.value,
+                    }))
+                  }
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Veículo</label>
-                  <input
-                    type="text"
-                    value={formData.vehicle}
-                    onChange={(e) => setFormData({ ...formData, vehicle: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-                    placeholder="Ex: Moto, Carro"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Placa</label>
-                  <input
-                    type="text"
-                    value={formData.vehicle_plate}
-                    onChange={(e) => setFormData({ ...formData, vehicle_plate: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-                    placeholder="Ex: ABC-1234"
-                  />
-                </div>
+              {/* Telefone */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Telefone *
+                </label>
+                <input
+                  type="tel"
+                  value={formData.phone}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      phone: e.target.value,
+                    }))
+                  }
+                  placeholder="+244 9XX XXX XXX"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
+                />
               </div>
 
+              {/* Veículo */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Veículo
+                </label>
                 <select
-                  value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
+                  value={formData.vehicle_type}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      vehicle_type: e.target.value,
+                    }))
+                  }
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
                 >
-                  <option value="active">Ativo</option>
-                  <option value="inactive">Inativo</option>
-                  <option value="suspended">Suspenso</option>
+                  {VEHICLE_OPTIONS.map((v) => (
+                    <option key={v.value} value={v.value}>
+                      {v.label}
+                    </option>
+                  ))}
                 </select>
               </div>
 
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-700">
-                <p className="font-medium">ℹ️ Informações de Acesso</p>
-                <p className="mt-1">O entregador receberá um email com as credenciais de acesso.</p>
-                <p className="mt-1 text-xs">Email: <strong>{formData.email || '...'}</strong> | Senha: <strong>{formData.password ? '••••••' : '...'}</strong></p>
+              {/* Placa */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Placa
+                </label>
+                <input
+                  type="text"
+                  value={formData.plate}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      plate: e.target.value.toUpperCase(),
+                    }))
+                  }
+                  placeholder="LD-00-00-XX"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f] font-mono"
+                />
               </div>
 
-              <div className="flex gap-3 pt-4 border-t border-gray-200">
-                <button
-                  type="submit"
-                  disabled={uploading}
-                  className="flex-1 py-3 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition font-medium disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {uploading ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                      Criando...
-                    </>
-                  ) : (
-                    'Criar Entregador'
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowModal(false);
-                    resetForm();
-                  }}
-                  className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition font-medium"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal de Detalhes */}
-      {showDetailModal && selectedAgent && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-[#2d6a4f] flex items-center gap-2">
-                <User className="w-6 h-6" />
-                Detalhes do Entregador
-              </h2>
-              <button
-                onClick={() => setShowDetailModal(false)}
-                className="p-2 hover:bg-gray-100 rounded-full transition"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-6">
-              <div className="flex items-center gap-6">
-                <div className="w-24 h-24 bg-[#f0f4f0] rounded-full overflow-hidden">
-                  {selectedAgent.photo_url ? (
-                    <img
-                      src={selectedAgent.photo_url}
-                      alt={selectedAgent.full_name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-3xl bg-[#2d6a4f] text-white font-bold">
-                      {selectedAgent.full_name[0]?.toUpperCase() || 'E'}
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-gray-800">{selectedAgent.full_name}</h3>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(selectedAgent.status)}`}>
-                      {getStatusLabel(selectedAgent.status)}
-                    </span>
-                    {selectedAgent.is_available && (
-                      <span className="text-xs text-green-600 flex items-center gap-1">
-                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                        Disponível
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-500">Telefone</p>
-                  <p className="font-medium">{selectedAgent.phone}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Email</p>
-                  <p className="font-medium">{selectedAgent.email || '-'}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">BI</p>
-                  <p className="font-medium">{selectedAgent.bi_number}</p>
-                  {selectedAgent.bi_file_url && (
-                    <a
-                      href={selectedAgent.bi_file_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-[#2d6a4f] hover:text-[#a7c957] transition flex items-center gap-1 mt-1"
+              {/* Status */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Status
+                </label>
+                <div className="flex gap-2">
+                  {Object.entries(STATUS_CONFIG).map(([key, config]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() =>
+                        setFormData((prev) => ({ ...prev, status: key }))
+                      }
+                      className={`flex-1 px-3 py-2 rounded-xl text-sm font-medium transition ${
+                        formData.status === key
+                          ? config.color
+                          : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                      }`}
                     >
-                      <FileText className="w-3 h-3" />
-                      Ver PDF
-                    </a>
-                  )}
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Data de Cadastro</p>
-                  <p className="font-medium">{formatDate(selectedAgent.created_at)}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Veículo</p>
-                  <p className="font-medium">{selectedAgent.vehicle || '-'}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Placa</p>
-                  <p className="font-medium">{selectedAgent.vehicle_plate || '-'}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Total de Entregas</p>
-                  <p className="font-medium">{selectedAgent.total_deliveries || 0}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Avaliação</p>
-                  <div className="flex items-center gap-1">
-                    <Star className="w-4 h-4 fill-[#f4a261] text-[#f4a261]" />
-                    <span className="font-medium">{selectedAgent.rating?.toFixed(1) || '0.0'}</span>
-                  </div>
+                      {config.label}
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              <div className="flex gap-3 pt-4 border-t border-gray-200">
+              {/* Ações */}
+              <div className="flex gap-3 pt-4 border-t">
                 <button
-                  onClick={() => {
-                    setShowDetailModal(false);
-                    // Implementar edição
-                    alert('Funcionalidade em desenvolvimento');
-                  }}
-                  className="flex-1 py-3 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition font-medium flex items-center justify-center gap-2"
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="flex-1 py-3 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition font-medium flex items-center justify-center gap-2 disabled:opacity-50"
                 >
-                  <Edit className="w-4 h-4" />
-                  Editar
+                  <CheckCircle className="w-4 h-4" />
+                  {saving
+                    ? 'Salvando...'
+                    : editingAgent
+                      ? 'Atualizar'
+                      : 'Criar'}
                 </button>
                 <button
-                  onClick={() => {
-                    setShowDetailModal(false);
-                    handleDelete(selectedAgent.id);
-                  }}
-                  className="flex-1 py-3 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition font-medium flex items-center justify-center gap-2"
+                  onClick={() => setShowModal(false)}
+                  disabled={saving}
+                  className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200 transition font-medium flex items-center justify-center gap-2 disabled:opacity-50"
                 >
-                  <Trash2 className="w-4 h-4" />
-                  Excluir
+                  <XCircle className="w-4 h-4" />
+                  Cancelar
                 </button>
               </div>
             </div>

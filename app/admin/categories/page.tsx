@@ -4,331 +4,333 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import {
+  FolderTree,
   Plus,
   Search,
   Edit,
   Trash2,
-  Tag,
+  X,
   ChevronLeft,
   ChevronRight,
-  X,
-  CheckCircle,
-  XCircle,
-  AlertCircle,
-  FolderOpen,
-  Package,
-  TrendingUp,
-  Eye,
-  Save,
-  FolderPlus
+  Check,
 } from 'lucide-react';
 
+// ============================================================
+// TIPOS
+// ============================================================
 type Category = {
   id: string;
   name: string;
   slug: string;
-  description: string;
-  icon: string;
-  color: string;
-  product_count: number;
-  is_active: boolean;
+  description: string | null;
+  image_url: string | null;
   created_at: string;
   updated_at: string;
+  product_count?: number;
 };
 
-// Categorias pré-definidas com ícones
-const DEFAULT_CATEGORIES = [
-  { name: 'Carnes', icon: '🥩', color: 'bg-red-100 text-red-700' },
-  { name: 'Verduras', icon: '🥬', color: 'bg-green-100 text-green-700' },
-  { name: 'Frutas', icon: '🍎', color: 'bg-orange-100 text-orange-700' },
-  { name: 'Chás', icon: '🍵', color: 'bg-amber-100 text-amber-700' },
-  { name: 'Legumes', icon: '🥕', color: 'bg-yellow-100 text-yellow-700' },
-  { name: 'Laticínios', icon: '🧀', color: 'bg-blue-100 text-blue-700' },
-  { name: 'Ovos', icon: '🥚', color: 'bg-rose-100 text-rose-700' },
-  { name: 'Mercearia', icon: '🧂', color: 'bg-gray-100 text-gray-700' },
-  { name: 'Padaria', icon: '🍞', color: 'bg-amber-100 text-amber-700' },
-  { name: 'Bebidas', icon: '🧃', color: 'bg-sky-100 text-sky-700' },
-];
+type CategoryForm = {
+  name: string;
+  slug: string;
+  description: string;
+  image_url: string;
+};
 
+// ============================================================
+// COMPONENTE
+// ============================================================
 export default function AdminCategoriesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [showModal, setShowModal] = useState(false);
-  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [formData, setFormData] = useState({
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Modal
+  const [showModal, setShowModal] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [formData, setFormData] = useState<CategoryForm>({
     name: '',
+    slug: '',
     description: '',
-    icon: '📦',
-    color: 'bg-gray-100 text-gray-700',
-    is_active: true
+    image_url: '',
   });
 
   const ITEMS_PER_PAGE = 10;
 
-  // Lista de ícones disponíveis
-  const availableIcons = [
-    '🥩', '🥬', '🍎', '🍵', '🥕', '🧀', '🥚', '🧂', '🍞', '🧃',
-    '🍗', '🥑', '🍊', '🍋', '🍌', '🍉', '🍇', '🍓', '🫐', '🍈',
-    '🥝', '🍅', '🫑', '🥒', '🥬', '🥦', '🧅', '🧄', '🥔', '🍠',
-    '🌽', '🥕', '🥗', '🍲', '🥘', '🍳', '🧇', '🥞', '🧈', '🧊',
-    '🍦', '🍧', '🍨', '🍩', '🍪', '🎂', '🧁', '🥧', '🍫', '🍬',
-  ];
-
+  // ============================================================
+  // BUSCAR CATEGORIAS
+  // ============================================================
   useEffect(() => {
-    fetchCategories();
-  }, [currentPage, searchTerm]);
+    let cancelled = false;
 
-  const fetchCategories = async () => {
-    setLoading(true);
-    try {
-      let query = supabase
-        .from('categories')
-        .select('*', { count: 'exact' });
-
-      if (searchTerm) {
-        query = query.ilike('name', `%${searchTerm}%`);
-      }
-
-      const from = (currentPage - 1) * ITEMS_PER_PAGE;
-      const to = from + ITEMS_PER_PAGE - 1;
-
-      const { data, error, count } = await query
-        .range(from, to)
-        .order('name', { ascending: true });
-
-      if (error) throw error;
-
-      // Se não houver categorias, criar as padrão
-      if (!data || data.length === 0) {
-        await createDefaultCategories();
-        // Recarregar após criar
-        const { data: newData } = await supabase
+    const fetchCategories = async () => {
+      setLoading(true);
+      try {
+        let query = supabase
           .from('categories')
-          .select('*')
+          .select('*', { count: 'exact' });
+
+        if (searchTerm) {
+          query = query.ilike('name', `%${searchTerm}%`);
+        }
+
+        const from = (currentPage - 1) * ITEMS_PER_PAGE;
+        const to = from + ITEMS_PER_PAGE - 1;
+
+        const { data, error, count } = await query
+          .range(from, to)
           .order('name', { ascending: true });
-        setCategories(newData || []);
-        setTotalPages(Math.ceil((count || 0) / ITEMS_PER_PAGE));
-      } else {
-        setCategories(data || []);
-        setTotalPages(Math.ceil((count || 0) / ITEMS_PER_PAGE));
-      }
-    } catch (error) {
-      console.error('Erro ao buscar categorias:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  const createDefaultCategories = async () => {
-    try {
-      for (const cat of DEFAULT_CATEGORIES) {
-        await supabase
-          .from('categories')
-          .insert({
-            name: cat.name,
-            slug: cat.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '-'),
-            icon: cat.icon,
-            color: cat.color,
-            is_active: true,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
+        if (error) throw error;
+
+        // Buscar contagem de produtos por categoria
+        const categoryIds = (data || []).map((c) => c.id);
+        const productCountMap: Record<string, number> = {};
+
+        if (categoryIds.length > 0) {
+          const { data: productsData } = await supabase
+            .from('products')
+            .select('category_id')
+            .in('category_id', categoryIds);
+
+          productsData?.forEach((p) => {
+            if (p.category_id) {
+              productCountMap[p.category_id] =
+                (productCountMap[p.category_id] || 0) + 1;
+            }
           });
+        }
+
+        const enrichedCategories: Category[] = (data || []).map((cat) => ({
+          ...cat,
+          product_count: productCountMap[cat.id] || 0,
+        }));
+
+        if (!cancelled) {
+          setCategories(enrichedCategories);
+          setTotalPages(Math.ceil((count || 0) / ITEMS_PER_PAGE));
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error('Erro ao buscar categorias:', error);
+        if (!cancelled) setLoading(false);
       }
-    } catch (error) {
-      console.error('Erro ao criar categorias padrão:', error);
-    }
+    };
+
+    fetchCategories();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentPage, searchTerm, refreshKey]);
+
+  // ============================================================
+  // ABRIR MODAL DE CRIAÇÃO
+  // ============================================================
+  const openCreateModal = () => {
+    setEditingCategory(null);
+    setFormData({
+      name: '',
+      slug: '',
+      description: '',
+      image_url: '',
+    });
+    setShowModal(true);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
+  // ============================================================
+  // ABRIR MODAL DE EDIÇÃO
+  // ============================================================
+  const openEditModal = (category: Category) => {
+    setEditingCategory(category);
+    setFormData({
+      name: category.name || '',
+      slug: category.slug || '',
+      description: category.description || '',
+      image_url: category.image_url || '',
+    });
+    setShowModal(true);
+  };
 
+  // ============================================================
+  // GERAR SLUG AUTOMATICAMENTE
+  // ============================================================
+  const generateSlug = (name: string) => {
+    return name
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '');
+  };
+
+  const handleNameChange = (value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      name: value,
+      slug: prev.slug || generateSlug(value),
+    }));
+  };
+
+  // ============================================================
+  // SALVAR (CRIAR OU EDITAR)
+  // ============================================================
+  const handleSave = async () => {
+    if (!formData.name.trim()) {
+      alert('Por favor, preencha o nome da categoria');
+      return;
+    }
+
+    setSaving(true);
     try {
-      const slug = formData.name
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9]/g, '-');
-
-      const categoryData = {
-        name: formData.name,
-        slug: slug,
-        description: formData.description,
-        icon: formData.icon,
-        color: formData.color,
-        is_active: formData.is_active,
-        updated_at: new Date().toISOString()
+      const payload = {
+        name: formData.name.trim(),
+        slug: formData.slug || generateSlug(formData.name),
+        description: formData.description.trim() || null,
+        image_url: formData.image_url.trim() || null,
+        updated_at: new Date().toISOString(),
       };
 
       if (editingCategory) {
         const { error } = await supabase
           .from('categories')
-          .update(categoryData)
+          .update(payload)
           .eq('id', editingCategory.id);
-
         if (error) throw error;
-        alert('✅ Categoria atualizada com sucesso!');
       } else {
         const { error } = await supabase
           .from('categories')
-          .insert({
-            ...categoryData,
-            created_at: new Date().toISOString()
-          });
-
+          .insert([payload]);
         if (error) throw error;
-        alert('✅ Categoria criada com sucesso!');
       }
 
       setShowModal(false);
-      resetForm();
-      fetchCategories();
-    } catch (error: any) {
-      console.error('Erro:', error);
-      alert(`❌ Erro: ${error.message}`);
+      setRefreshKey((prev) => prev + 1);
+      alert(
+        editingCategory
+          ? '✅ Categoria atualizada!'
+          : '✅ Categoria criada!'
+      );
+    } catch (error) {
+      console.error('Erro ao salvar categoria:', error);
+      alert('❌ Erro ao salvar categoria');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Tem certeza que deseja excluir esta categoria?')) return;
+  // ============================================================
+  // DELETAR CATEGORIA
+  // ============================================================
+  const handleDelete = async (category: Category) => {
+    if (category.product_count && category.product_count > 0) {
+      alert(
+        `❌ Não é possível excluir. Existem ${category.product_count} produtos associados a esta categoria.`
+      );
+      return;
+    }
+
+    if (
+      !confirm(
+        `Tem certeza que deseja excluir a categoria "${category.name}"?`
+      )
+    )
+      return;
 
     try {
       const { error } = await supabase
         .from('categories')
         .delete()
-        .eq('id', id);
+        .eq('id', category.id);
 
       if (error) throw error;
-      fetchCategories();
-      alert('✅ Categoria excluída com sucesso!');
+      setRefreshKey((prev) => prev + 1);
+      alert('✅ Categoria excluída!');
     } catch (error) {
-      console.error('Erro ao excluir:', error);
+      console.error('Erro ao excluir categoria:', error);
       alert('❌ Erro ao excluir categoria');
     }
   };
 
-  const toggleActive = async (id: string, currentStatus: boolean) => {
-    try {
-      const { error } = await supabase
-        .from('categories')
-        .update({ 
-          is_active: !currentStatus,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id);
-
-      if (error) throw error;
-      fetchCategories();
-    } catch (error) {
-      console.error('Erro ao atualizar status:', error);
-      alert('❌ Erro ao atualizar status');
-    }
-  };
-
-  const resetForm = () => {
-    setFormData({
-      name: '',
-      description: '',
-      icon: '📦',
-      color: 'bg-gray-100 text-gray-700',
-      is_active: true
-    });
-    setEditingCategory(null);
-  };
-
-  const openEditModal = (category: Category) => {
-    setEditingCategory(category);
-    setFormData({
-      name: category.name,
-      description: category.description || '',
-      icon: category.icon || '📦',
-      color: category.color || 'bg-gray-100 text-gray-700',
-      is_active: category.is_active !== false
-    });
-    setShowModal(true);
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-AO', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    });
-  };
-
-  if (loading) {
+  // ============================================================
+  // LOADING
+  // ============================================================
+  if (loading && categories.length === 0) {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-[#2d6a4f] mx-auto"></div>
-          <p className="mt-4 text-[#2d6a4f] font-medium">Carregando categorias...</p>
+          <p className="mt-4 text-[#2d6a4f] font-medium">
+            Carregando categorias...
+          </p>
         </div>
       </div>
     );
   }
 
+  // ============================================================
+  // RENDER
+  // ============================================================
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold text-[#2d6a4f] flex items-center gap-2">
-            <Tag className="w-8 h-8" />
+            <FolderTree className="w-8 h-8" />
             Categorias
           </h1>
-          <p className="text-gray-500 mt-1">Gerencie as categorias de produtos</p>
+          <p className="text-gray-500 mt-1">
+            Organize os produtos em categorias
+          </p>
         </div>
         <button
-          onClick={() => {
-            resetForm();
-            setShowModal(true);
-          }}
-          className="px-6 py-3 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition flex items-center gap-2 shadow-lg hover:shadow-xl"
+          onClick={openCreateModal}
+          className="px-4 py-2 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition flex items-center gap-2"
         >
-          <Plus className="w-5 h-5" />
+          <Plus className="w-4 h-4" />
           Nova Categoria
         </button>
       </div>
 
       {/* Filtros */}
       <div className="bg-white rounded-3xl shadow-lg p-6">
-        <div className="flex flex-col md:flex-row gap-4">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar categorias..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-            />
-          </div>
-          <button
-            onClick={fetchCategories}
-            className="px-6 py-2 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition flex items-center gap-2"
-          >
-            Filtrar
-          </button>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Buscar categoria..."
+            value={searchTerm}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
+          />
         </div>
       </div>
 
-      {/* Lista de Categorias */}
+      {/* Tabela */}
       <div className="bg-white rounded-3xl shadow-lg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-[#f8f6f4]">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Categoria</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Slug</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Produtos</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Categoria
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Slug
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Produtos
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Ações
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -336,64 +338,60 @@ export default function AdminCategoriesPage() {
                 <tr key={category.id} className="hover:bg-gray-50 transition">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-2xl ${category.color || 'bg-gray-100'}`}>
-                        {category.icon || '📦'}
-                      </div>
+                      {category.image_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={category.image_url}
+                          alt={category.name}
+                          className="w-10 h-10 rounded-lg object-cover"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 bg-[#f0f4f0] rounded-lg flex items-center justify-center text-lg">
+                          📁
+                        </div>
+                      )}
                       <div>
-                        <p className="font-medium text-gray-800">{category.name}</p>
+                        <p className="font-medium text-gray-800">
+                          {category.name}
+                        </p>
                         {category.description && (
-                          <p className="text-xs text-gray-400 truncate max-w-[200px]">{category.description}</p>
+                          <p className="text-xs text-gray-400 line-clamp-1">
+                            {category.description}
+                          </p>
                         )}
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3">
-                    <span className="text-sm text-gray-500">{category.slug}</span>
+                  <td className="px-4 py-3 text-sm text-gray-500 font-mono">
+                    {category.slug}
                   </td>
                   <td className="px-4 py-3">
-                    <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-600">
-                      <Package className="w-3 h-3" />
-                      {category.product_count || 0}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <button
-                      onClick={() => toggleActive(category.id, category.is_active !== false)}
-                      className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium transition ${
-                        category.is_active !== false
-                          ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                          : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                    <span
+                      className={`px-3 py-1 rounded-full text-xs font-medium ${
+                        category.product_count && category.product_count > 0
+                          ? 'bg-[#f0f4f0] text-[#2d6a4f]'
+                          : 'bg-gray-100 text-gray-500'
                       }`}
                     >
-                      {category.is_active !== false ? (
-                        <>
-                          <CheckCircle className="w-3 h-3" />
-                          Ativo
-                        </>
-                      ) : (
-                        <>
-                          <XCircle className="w-3 h-3" />
-                          Inativo
-                        </>
-                      )}
-                    </button>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-500">
-                    {formatDate(category.created_at)}
+                      {category.product_count || 0} produto
+                      {category.product_count !== 1 ? 's' : ''}
+                    </span>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => openEditModal(category)}
                         className="p-2 hover:bg-gray-100 rounded-lg transition"
+                        title="Editar"
                       >
-                        <Edit className="w-4 h-4 text-blue-500" />
+                        <Edit className="w-4 h-4 text-gray-400 hover:text-[#2d6a4f]" />
                       </button>
                       <button
-                        onClick={() => handleDelete(category.id)}
+                        onClick={() => handleDelete(category)}
                         className="p-2 hover:bg-gray-100 rounded-lg transition"
+                        title="Excluir"
                       >
-                        <Trash2 className="w-4 h-4 text-red-500" />
+                        <Trash2 className="w-4 h-4 text-gray-400 hover:text-red-600" />
                       </button>
                     </div>
                   </td>
@@ -403,18 +401,15 @@ export default function AdminCategoriesPage() {
           </table>
         </div>
 
-        {categories.length === 0 && (
+        {categories.length === 0 && !loading && (
           <div className="text-center py-12">
-            <div className="text-6xl mb-4">🏷️</div>
-            <p className="text-gray-500">Nenhuma categoria cadastrada</p>
+            <div className="text-6xl mb-4">📁</div>
+            <p className="text-gray-500">Nenhuma categoria encontrada</p>
             <button
-              onClick={() => {
-                resetForm();
-                setShowModal(true);
-              }}
-              className="mt-4 px-6 py-2 bg-[#2d6a4f] text-white rounded-full hover:bg-[#1b4332] transition"
+              onClick={openCreateModal}
+              className="inline-block mt-4 px-6 py-2 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition"
             >
-              Criar primeira categoria
+              Criar Primeira Categoria
             </button>
           </div>
         )}
@@ -427,14 +422,18 @@ export default function AdminCategoriesPage() {
             </div>
             <div className="flex gap-2">
               <button
-                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                onClick={() =>
+                  setCurrentPage((prev) => Math.max(1, prev - 1))
+                }
                 disabled={currentPage === 1}
                 className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition disabled:opacity-50"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
               <button
-                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                onClick={() =>
+                  setCurrentPage((prev) => Math.min(totalPages, prev + 1))
+                }
                 disabled={currentPage === totalPages}
                 className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition disabled:opacity-50"
               >
@@ -445,148 +444,129 @@ export default function AdminCategoriesPage() {
         )}
       </div>
 
-      {/* Modal de Criar/Editar Categoria */}
+      {/* Modal Criar/Editar */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold text-[#2d6a4f]">
                 {editingCategory ? 'Editar Categoria' : 'Nova Categoria'}
               </h2>
               <button
-                onClick={() => {
-                  setShowModal(false);
-                  resetForm();
-                }}
+                onClick={() => setShowModal(false)}
                 className="p-2 hover:bg-gray-100 rounded-full transition"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-4">
+              {/* Nome */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nome *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Nome *
+                </label>
                 <input
                   type="text"
-                  required
                   value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-                  placeholder="Ex: Carnes, Frutas, Bebidas"
+                  onChange={(e) => handleNameChange(e.target.value)}
+                  placeholder="Ex: Frutas e Vegetais"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
                 />
               </div>
 
+              {/* Slug */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Slug (URL)
+                </label>
+                <input
+                  type="text"
+                  value={formData.slug}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      slug: e.target.value,
+                    }))
+                  }
+                  placeholder="frutas-e-vegetais"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f] font-mono text-sm"
+                />
+              </div>
+
+              {/* Descrição */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Descrição
+                </label>
                 <textarea
                   value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  rows={2}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-                  placeholder="Descrição da categoria (opcional)"
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      description: e.target.value,
+                    }))
+                  }
+                  rows={3}
+                  placeholder="Breve descrição da categoria..."
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f] resize-none"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Ícone</label>
-                  <div className="flex flex-wrap gap-2 p-2 border border-gray-300 rounded-xl max-h-32 overflow-y-auto">
-                    {availableIcons.map((icon) => (
-                      <button
-                        key={icon}
-                        type="button"
-                        onClick={() => setFormData({ ...formData, icon })}
-                        className={`w-10 h-10 text-2xl rounded-lg transition ${
-                          formData.icon === icon
-                            ? 'bg-[#2d6a4f] text-white scale-110'
-                            : 'bg-gray-100 hover:bg-gray-200'
-                        }`}
-                      >
-                        {icon}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Cor</label>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      'bg-red-100 text-red-700',
-                      'bg-green-100 text-green-700',
-                      'bg-orange-100 text-orange-700',
-                      'bg-amber-100 text-amber-700',
-                      'bg-yellow-100 text-yellow-700',
-                      'bg-blue-100 text-blue-700',
-                      'bg-rose-100 text-rose-700',
-                      'bg-gray-100 text-gray-700',
-                      'bg-sky-100 text-sky-700',
-                      'bg-purple-100 text-purple-700',
-                      'bg-pink-100 text-pink-700',
-                      'bg-indigo-100 text-indigo-700',
-                    ].map((color) => (
-                      <button
-                        key={color}
-                        type="button"
-                        onClick={() => setFormData({ ...formData, color })}
-                        className={`w-8 h-8 rounded-full border-2 transition ${
-                          formData.color === color
-                            ? 'border-[#2d6a4f] scale-110'
-                            : 'border-transparent'
-                        }`}
-                      >
-                        <div className={`w-full h-full rounded-full ${color.split(' ')[0]}`}></div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={formData.is_active}
-                    onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                    className="w-4 h-4 text-[#2d6a4f] rounded focus:ring-[#2d6a4f]"
-                  />
-                  <span className="text-sm text-gray-700">Categoria ativa</span>
+              {/* URL da Imagem */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  URL da Imagem
                 </label>
+                <input
+                  type="text"
+                  value={formData.image_url}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      image_url: e.target.value,
+                    }))
+                  }
+                  placeholder="https://..."
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f] text-sm"
+                />
               </div>
 
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-700">
-                <p className="font-medium">💡 Informação</p>
-                <p className="mt-1">Categorias inativas não aparecem na vitrine da loja.</p>
-                <p className="mt-1 text-xs">Slug gerado automaticamente: <strong>{formData.name ? formData.name.toLowerCase().replace(/[^a-z0-9]/g, '-') : '...'}</strong></p>
-              </div>
+              {/* Preview da imagem */}
+              {formData.image_url && (
+                <div className="flex justify-center">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={formData.image_url}
+                    alt="Preview"
+                    className="w-24 h-24 object-cover rounded-xl border border-gray-200"
+                  />
+                </div>
+              )}
 
-              <div className="flex gap-3 pt-4 border-t border-gray-200">
+              {/* Ações */}
+              <div className="flex gap-3 pt-4 border-t">
                 <button
-                  type="submit"
-                  disabled={loading}
-                  className="flex-1 py-3 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="flex-1 py-3 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition font-medium flex items-center justify-center gap-2 disabled:opacity-50"
                 >
-                  {loading ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                      Salvando...
-                    </>
-                  ) : (
-                    editingCategory ? 'Atualizar' : 'Criar Categoria'
-                  )}
+                  <Check className="w-4 h-4" />
+                  {saving
+                    ? 'Salvando...'
+                    : editingCategory
+                      ? 'Atualizar'
+                      : 'Criar'}
                 </button>
                 <button
-                  type="button"
-                  onClick={() => {
-                    setShowModal(false);
-                    resetForm();
-                  }}
-                  className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition font-medium"
+                  onClick={() => setShowModal(false)}
+                  disabled={saving}
+                  className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200 transition font-medium disabled:opacity-50"
                 >
                   Cancelar
                 </button>
               </div>
-            </form>
+            </div>
           </div>
         </div>
       )}

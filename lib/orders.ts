@@ -1,7 +1,10 @@
 // lib/orders.ts
-import { createClient } from './supabase/client';
+import { supabase } from './supabase/client';
 import { calculateDeliveryFee } from './delivery-fee';
 
+// ============================================================
+// TIPOS
+// ============================================================
 interface OrderItem {
   productId: string;
   quantity: number;
@@ -16,8 +19,10 @@ interface OrderData {
   scheduledTime?: Date;
 }
 
+// ============================================================
+// CALCULAR TOTAL
+// ============================================================
 export async function calculateTotal(items: OrderItem[]) {
-  const supabase = createClient();
   let total = 0;
 
   for (const item of items) {
@@ -35,8 +40,10 @@ export async function calculateTotal(items: OrderItem[]) {
   return total;
 }
 
+// ============================================================
+// BUSCAR PRODUTO
+// ============================================================
 export async function getProduct(productId: string) {
-  const supabase = createClient();
   const { data } = await supabase
     .from('products')
     .select('*')
@@ -45,9 +52,10 @@ export async function getProduct(productId: string) {
   return data;
 }
 
+// ============================================================
+// CRIAR PEDIDO
+// ============================================================
 export async function createOrder(orderData: OrderData) {
-  const supabase = createClient();
-
   const total = await calculateTotal(orderData.items);
   const deliveryFee = calculateDeliveryFee(
     orderData.deliveryLat,
@@ -64,19 +72,22 @@ export async function createOrder(orderData: OrderData) {
       total_amount: total,
       delivery_fee: deliveryFee,
       scheduled_time: orderData.scheduledTime || new Date(),
-      status: 'pending'
+      status: 'pending',
     })
     .select()
     .single();
 
   if (error) throw error;
+  if (!order) throw new Error('Falha ao criar pedido');
 
+  // Inserir itens
   for (const item of orderData.items) {
     const product = await getProduct(item.productId);
     if (product) {
       await supabase.from('order_items').insert({
         order_id: order.id,
         product_id: item.productId,
+        product_name: product.name,
         quantity: item.quantity,
         unit_price: product.price,
         total_price: product.price * item.quantity,
@@ -87,21 +98,27 @@ export async function createOrder(orderData: OrderData) {
   return order;
 }
 
+// ============================================================
+// BUSCAR PEDIDO (com itens)
+// ============================================================
 export async function getOrder(orderId: string) {
-  const supabase = createClient();
   const { data } = await supabase
     .from('orders')
-    .select(`
+    .select(
+      `
       *,
-      users:client_id (name, phone),
-      order_items (
+      items:order_items (
+        id,
+        product_id,
+        product_name,
         quantity,
-        total_price,
         unit_price,
-        products (name, price)
+        total_price
       )
-    `)
+    `
+    )
     .eq('id', orderId)
     .single();
+
   return data;
 }

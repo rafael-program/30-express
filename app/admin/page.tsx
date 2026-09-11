@@ -2,106 +2,247 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase/client';
 import Link from 'next/link';
+import { supabase } from '@/lib/supabase/client';
 import {
-  Package,
+  LayoutDashboard,
   ShoppingBag,
-  Users,
-  Truck,
-  TrendingUp,
-  TrendingDown,
   DollarSign,
+  Users,
+  Package,
+  TrendingUp,
   Clock,
   CheckCircle,
+  Truck,
   AlertCircle,
   ArrowUpRight,
-  ArrowDownRight,
-  Calendar,
-  Download,
-  Filter,
-  Search,
-  Eye,
-  Printer,
-  LayoutDashboard
 } from 'lucide-react';
 
-export default function AdminDashboard() {
-  const [stats, setStats] = useState({
-    total_orders: 0,
-    total_revenue: 0,
-    total_products: 0,
-    total_customers: 0,
-    total_deliveries: 0,
-    pending_orders: 0,
-    delivered_today: 0,
-    revenue_today: 0
-  });
-  const [recentOrders, setRecentOrders] = useState<any[]>([]);
+// ============================================================
+// TIPOS
+// ============================================================
+type OrderStatus =
+  | 'pending'
+  | 'confirmed'
+  | 'preparing'
+  | 'ready'
+  | 'in_transit'
+  | 'delivered'
+  | 'cancelled';
+
+type Order = {
+  id: string;
+  customer_name: string;
+  customer_phone: string;
+  status: OrderStatus;
+  total_amount: number;
+  created_at: string;
+};
+
+type DashboardStats = {
+  todayRevenue: number;
+  todayOrders: number;
+  pendingOrders: number;
+  inTransitOrders: number;
+  deliveredToday: number;
+  totalProducts: number;
+  lowStockProducts: number;
+  activeDeliveryAgents: number;
+  totalCustomers: number;
+};
+
+type DailyRevenue = {
+  date: string;
+  revenue: number;
+  orders: number;
+};
+
+// ============================================================
+// CONFIGURAÇÃO DE STATUS
+// ============================================================
+const STATUS_CONFIG: Record<
+  OrderStatus,
+  { label: string; color: string }
+> = {
+  pending: { label: 'Pendente', color: 'bg-yellow-100 text-yellow-700' },
+  confirmed: { label: 'Confirmado', color: 'bg-blue-100 text-blue-700' },
+  preparing: {
+    label: 'Em Preparação',
+    color: 'bg-orange-100 text-orange-700',
+  },
+  ready: { label: 'Pronto', color: 'bg-purple-100 text-purple-700' },
+  in_transit: {
+    label: 'Em Trânsito',
+    color: 'bg-indigo-100 text-indigo-700',
+  },
+  delivered: { label: 'Entregue', color: 'bg-green-100 text-green-700' },
+  cancelled: { label: 'Cancelado', color: 'bg-red-100 text-red-700' },
+};
+
+// ============================================================
+// COMPONENTE
+// ============================================================
+export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        console.log('📊 Buscando dados do dashboard...');
+  const [stats, setStats] = useState<DashboardStats>({
+    todayRevenue: 0,
+    todayOrders: 0,
+    pendingOrders: 0,
+    inTransitOrders: 0,
+    deliveredToday: 0,
+    totalProducts: 0,
+    lowStockProducts: 0,
+    activeDeliveryAgents: 0,
+    totalCustomers: 0,
+  });
 
-        // Buscar pedidos
-        const { data: orders, error: ordersError } = await supabase
+  const [recentOrders, setRecentOrders] = useState<Order[]>([]);
+  const [dailyRevenue, setDailyRevenue] = useState<DailyRevenue[]>([]);
+
+  // ============================================================
+  // BUSCAR DADOS DO DASHBOARD
+  // ============================================================
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchDashboardData = async () => {
+      setLoading(true);
+      try {
+        // Intervalo: hoje (00:00 até agora)
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+
+        // Últimos 7 dias
+        const weekAgo = new Date();
+        weekAgo.setDate(weekAgo.getDate() - 7);
+
+        // 1. Pedidos de hoje
+        const { data: todayOrders } = await supabase
           .from('orders')
           .select('*')
-          .order('created_at', { ascending: false });
+          .gte('created_at', todayStart.toISOString());
 
-        if (ordersError) {
-          console.error('❌ Erro ao buscar pedidos:', ordersError);
-          return;
-        }
+        const ordersToday: Order[] = todayOrders || [];
 
-        console.log('✅ Pedidos encontrados:', orders?.length);
+        // 2. Pedidos dos últimos 7 dias (para gráfico)
+        const { data: weekOrders } = await supabase
+          .from('orders')
+          .select('created_at, total_amount, status')
+          .gte('created_at', weekAgo.toISOString())
+          .order('created_at', { ascending: true });
 
-        // Calcular estatísticas
-        const totalOrders = orders?.length || 0;
-        const totalRevenue = orders?.reduce((sum, o) => sum + (o.total_amount || 0), 0) || 0;
-        const pendingOrders = orders?.filter(o => o.status === 'pending' || o.status === 'confirmed').length || 0;
-        const deliveredOrders = orders?.filter(o => o.status === 'delivered').length || 0;
-
-        // Buscar produtos
+        // 3. Produtos
         const { count: productsCount } = await supabase
           .from('products')
           .select('*', { count: 'exact', head: true });
 
-        // Buscar clientes
-        const { count: customersCount } = await supabase
-          .from('profiles')
-          .select('*', { count: 'exact', head: true });
+        const { count: lowStockCount } = await supabase
+          .from('products')
+          .select('*', { count: 'exact', head: true })
+          .lte('stock', 10)
+          .gt('stock', 0);
 
-        setStats({
-          total_orders: totalOrders,
-          total_revenue: totalRevenue,
-          total_products: productsCount || 0,
-          total_customers: customersCount || 0,
-          total_deliveries: deliveredOrders,
-          pending_orders: pendingOrders,
-          delivered_today: 0,
-          revenue_today: 0
+        // 4. Entregadores disponíveis
+        const { count: agentsCount } = await supabase
+          .from('delivery_agents')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'available');
+
+        // 5. Clientes únicos
+        const { data: customerIds } = await supabase
+          .from('orders')
+          .select('customer_id')
+          .not('customer_id', 'is', null);
+
+        const uniqueCustomers = new Set(
+          (customerIds || [])
+            .map((o) => o.customer_id)
+            .filter((id): id is string => Boolean(id))
+        ).size;
+
+        // 6. Calcular stats
+        const todayRevenue = ordersToday
+          .filter((o) => o.status !== 'cancelled')
+          .reduce((sum, o) => sum + (o.total_amount || 0), 0);
+
+        const pendingOrders = ordersToday.filter(
+          (o) => o.status === 'pending' || o.status === 'confirmed'
+        ).length;
+
+        const inTransitOrders = ordersToday.filter(
+          (o) => o.status === 'in_transit' || o.status === 'ready'
+        ).length;
+
+        const deliveredToday = ordersToday.filter(
+          (o) => o.status === 'delivered'
+        ).length;
+
+        // 7. Receita diária (últimos 7 dias)
+        const dailyMap: Record<string, DailyRevenue> = {};
+        (weekOrders || []).forEach((order) => {
+          const date = new Date(order.created_at)
+            .toISOString()
+            .split('T')[0];
+
+          if (!dailyMap[date]) {
+            dailyMap[date] = { date, revenue: 0, orders: 0 };
+          }
+          dailyMap[date].orders += 1;
+          if (order.status !== 'cancelled') {
+            dailyMap[date].revenue += order.total_amount || 0;
+          }
         });
 
-        setRecentOrders(orders?.slice(0, 10) || []);
+        const sortedDaily = Object.values(dailyMap).sort((a, b) =>
+          a.date.localeCompare(b.date)
+        );
 
+        // 8. Pedidos recentes (últimos 5)
+        const { data: recent } = await supabase
+          .from('orders')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(5);
+
+        if (!cancelled) {
+          setStats({
+            todayRevenue,
+            todayOrders: ordersToday.length,
+            pendingOrders,
+            inTransitOrders,
+            deliveredToday,
+            totalProducts: productsCount || 0,
+            lowStockProducts: lowStockCount || 0,
+            activeDeliveryAgents: agentsCount || 0,
+            totalCustomers: uniqueCustomers,
+          });
+
+          setRecentOrders((recent || []) as Order[]);
+          setDailyRevenue(sortedDaily);
+        }
       } catch (error) {
-        console.error('💥 Erro ao carregar dashboard:', error);
+        console.error('Erro ao buscar dados do dashboard:', error);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     fetchDashboardData();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
+  // ============================================================
+  // FORMATADORES
+  // ============================================================
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-AO', {
       style: 'currency',
       currency: 'AOA',
-      minimumFractionDigits: 0
+      minimumFractionDigits: 0,
     }).format(value);
   };
 
@@ -109,47 +250,49 @@ export default function AdminDashboard() {
     return new Date(dateString).toLocaleDateString('pt-AO', {
       day: '2-digit',
       month: '2-digit',
-      year: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     });
   };
 
-  const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      pending: 'bg-yellow-100 text-yellow-700',
-      confirmed: 'bg-blue-100 text-blue-700',
-      preparing: 'bg-indigo-100 text-indigo-700',
-      out_for_delivery: 'bg-orange-100 text-orange-700',
-      delivered: 'bg-green-100 text-green-700',
-      cancelled: 'bg-red-100 text-red-700'
-    };
-    return colors[status] || 'bg-gray-100 text-gray-700';
+  const formatOrderNumber = (id: string) => {
+    return `#${id.slice(0, 8).toUpperCase()}`;
   };
 
-  const getStatusLabel = (status: string) => {
-    const labels: Record<string, string> = {
-      pending: 'Pendente',
-      confirmed: 'Confirmado',
-      preparing: 'Preparando',
-      out_for_delivery: 'Em Rota',
-      delivered: 'Entregue',
-      cancelled: 'Cancelado'
-    };
-    return labels[status] || status;
+  const getStatusBadge = (status: OrderStatus) => {
+    return STATUS_CONFIG[status] || STATUS_CONFIG.pending;
   };
 
+  const getTodayLabel = () => {
+    return new Date().toLocaleDateString('pt-AO', {
+      weekday: 'long',
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    });
+  };
+
+  // ============================================================
+  // LOADING
+  // ============================================================
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-[#2d6a4f] mx-auto"></div>
-          <p className="mt-4 text-[#2d6a4f] font-medium">Carregando dados...</p>
+          <p className="mt-4 text-[#2d6a4f] font-medium">
+            Carregando dashboard...
+          </p>
         </div>
       </div>
     );
   }
 
+  const maxRevenue = Math.max(...dailyRevenue.map((d) => d.revenue), 1);
+
+  // ============================================================
+  // RENDER
+  // ============================================================
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -159,170 +302,299 @@ export default function AdminDashboard() {
             <LayoutDashboard className="w-8 h-8" />
             Dashboard
           </h1>
-          <p className="text-gray-500 mt-1">Visão geral do seu negócio</p>
+          <p className="text-gray-500 mt-1 capitalize">{getTodayLabel()}</p>
         </div>
-        <div className="flex items-center gap-3">
-          <button className="px-4 py-2 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition flex items-center gap-2">
-            <Download className="w-4 h-4" />
-            Exportar
-          </button>
+        <Link
+          href="/admin/orders"
+          className="px-4 py-2 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition flex items-center gap-2"
+        >
+          <ShoppingBag className="w-4 h-4" />
+          Ver Pedidos
+        </Link>
+      </div>
+
+      {/* Cards principais */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Receita de hoje */}
+        <div className="bg-white rounded-3xl shadow-lg p-6">
+          <div className="flex items-center justify-between mb-3">
+            <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+              <DollarSign className="w-6 h-6 text-green-600" />
+            </div>
+            <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
+              Hoje
+            </span>
+          </div>
+          <p className="text-sm text-gray-500">Receita de Hoje</p>
+          <p className="text-2xl font-bold text-[#2d6a4f] mt-1">
+            {formatCurrency(stats.todayRevenue)}
+          </p>
+        </div>
+
+        {/* Pedidos de hoje */}
+        <div className="bg-white rounded-3xl shadow-lg p-6">
+          <div className="flex items-center justify-between mb-3">
+            <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+              <ShoppingBag className="w-6 h-6 text-blue-600" />
+            </div>
+            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
+              Hoje
+            </span>
+          </div>
+          <p className="text-sm text-gray-500">Pedidos de Hoje</p>
+          <p className="text-2xl font-bold text-gray-800 mt-1">
+            {stats.todayOrders}
+          </p>
+        </div>
+
+        {/* Clientes */}
+        <div className="bg-white rounded-3xl shadow-lg p-6">
+          <div className="flex items-center justify-between mb-3">
+            <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
+              <Users className="w-6 h-6 text-purple-600" />
+            </div>
+          </div>
+          <p className="text-sm text-gray-500">Clientes</p>
+          <p className="text-2xl font-bold text-gray-800 mt-1">
+            {stats.totalCustomers}
+          </p>
+        </div>
+
+        {/* Produtos */}
+        <div className="bg-white rounded-3xl shadow-lg p-6">
+          <div className="flex items-center justify-between mb-3">
+            <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
+              <Package className="w-6 h-6 text-orange-600" />
+            </div>
+            {stats.lowStockProducts > 0 && (
+              <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full">
+                {stats.lowStockProducts} com stock baixo
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-gray-500">Produtos</p>
+          <p className="text-2xl font-bold text-gray-800 mt-1">
+            {stats.totalProducts}
+          </p>
         </div>
       </div>
 
-      {/* Cards de Estatísticas */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard
-          icon={ShoppingBag}
-          label="Total Pedidos"
-          value={stats.total_orders}
-          color="bg-blue-50 text-blue-600"
-        />
-        <StatCard
-          icon={DollarSign}
-          label="Faturamento"
-          value={formatCurrency(stats.total_revenue)}
-          color="bg-green-50 text-green-600"
-        />
-        <StatCard
-          icon={Users}
-          label="Clientes"
-          value={stats.total_customers}
-          color="bg-purple-50 text-purple-600"
-        />
-        <StatCard
-          icon={Truck}
-          label="Entregas"
-          value={stats.total_deliveries}
-          color="bg-orange-50 text-orange-600"
-        />
+      {/* Status dos pedidos */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-white rounded-3xl shadow-lg p-6 flex items-center gap-4">
+          <div className="w-14 h-14 bg-yellow-100 rounded-full flex items-center justify-center">
+            <Clock className="w-7 h-7 text-yellow-600" />
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">Pendentes</p>
+            <p className="text-2xl font-bold text-gray-800">
+              {stats.pendingOrders}
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-3xl shadow-lg p-6 flex items-center gap-4">
+          <div className="w-14 h-14 bg-indigo-100 rounded-full flex items-center justify-center">
+            <Truck className="w-7 h-7 text-indigo-600" />
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">Em Trânsito</p>
+            <p className="text-2xl font-bold text-gray-800">
+              {stats.inTransitOrders}
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-3xl shadow-lg p-6 flex items-center gap-4">
+          <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center">
+            <CheckCircle className="w-7 h-7 text-green-600" />
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">Entregues Hoje</p>
+            <p className="text-2xl font-bold text-gray-800">
+              {stats.deliveredToday}
+            </p>
+          </div>
+        </div>
       </div>
 
-      {/* Cards Secundários */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <SmallStatCard
-          icon={AlertCircle}
-          label="Pendentes"
-          value={stats.pending_orders}
-          color="bg-yellow-50 text-yellow-600"
-        />
-        <SmallStatCard
-          icon={Package}
-          label="Produtos"
-          value={stats.total_products}
-          color="bg-indigo-50 text-indigo-600"
-        />
-        <SmallStatCard
-          icon={CheckCircle}
-          label="Entregues"
-          value={stats.total_deliveries}
-          color="bg-green-50 text-green-600"
-        />
-        <SmallStatCard
-          icon={TrendingUp}
-          label="Faturamento Hoje"
-          value={formatCurrency(stats.revenue_today)}
-          color="bg-emerald-50 text-emerald-600"
-        />
-      </div>
-
-      {/* Pedidos Recentes */}
+      {/* Gráfico de Receita (últimos 7 dias) */}
       <div className="bg-white rounded-3xl shadow-lg p-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-            <Clock className="w-5 h-5 text-[#2d6a4f]" />
-            Últimos Pedidos
+          <h2 className="text-lg font-bold text-[#2d6a4f] flex items-center gap-2">
+            <TrendingUp className="w-5 h-5" />
+            Receita (Últimos 7 dias)
           </h2>
-          <Link
-            href="/admin/orders"
-            className="text-sm text-[#2d6a4f] hover:text-[#a7c957] transition flex items-center gap-1"
-          >
-            Ver todos
-            <ArrowUpRight className="w-4 h-4" />
-          </Link>
+          <span className="text-xs text-gray-500">
+            Total:{' '}
+            {formatCurrency(
+              dailyRevenue.reduce((sum, d) => sum + d.revenue, 0)
+            )}
+          </span>
         </div>
 
-        {recentOrders.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="text-6xl mb-4">📦</div>
-            <p className="text-gray-500">Nenhum pedido ainda</p>
-            <p className="text-sm text-gray-400 mt-1">Os pedidos aparecerão aqui quando forem feitos</p>
+        {dailyRevenue.length > 0 ? (
+          <div className="flex items-end gap-3 h-48">
+            {dailyRevenue.map((day) => (
+              <div
+                key={day.date}
+                className="flex-1 flex flex-col items-center gap-2"
+              >
+                <div className="text-xs font-medium text-gray-600">
+                  {formatCurrency(day.revenue).replace('AOA', '').trim()}
+                </div>
+                <div
+                  className="w-full bg-[#2d6a4f] rounded-t-lg transition-all hover:bg-[#1b4332] min-h-[4px]"
+                  style={{
+                    height: `${(day.revenue / maxRevenue) * 140}px`,
+                  }}
+                  title={`${day.orders} pedidos — ${formatCurrency(day.revenue)}`}
+                />
+                <div className="text-xs text-gray-500">
+                  {new Date(day.date).toLocaleDateString('pt-AO', {
+                    day: '2-digit',
+                    month: '2-digit',
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pedido</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cliente</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentOrders.map((order) => (
-                  <tr key={order.id} className="border-b border-gray-50 hover:bg-gray-50 transition">
-                    <td className="px-4 py-3">
-                      <span className="font-medium text-gray-800">{order.order_number}</span>
-                    </td>
-                    <td className="px-4 py-3 text-gray-600">{order.customer_name || 'Cliente'}</td>
-                    <td className="px-4 py-3 font-bold text-[#2d6a4f]">
-                      {formatCurrency(order.total_amount)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
-                        {getStatusLabel(order.status)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-500">{formatDate(order.created_at)}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <Link
-                          href={`/admin/orders/${order.id}`}
-                          className="p-1.5 hover:bg-gray-100 rounded-lg transition"
-                        >
-                          <Eye className="w-4 h-4 text-gray-400 hover:text-gray-600" />
-                        </Link>
-                        <button className="p-1.5 hover:bg-gray-100 rounded-lg transition">
-                          <Printer className="w-4 h-4 text-gray-400 hover:text-gray-600" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="text-center py-12">
+            <TrendingUp className="w-12 h-12 text-gray-300 mx-auto mb-2" />
+            <p className="text-gray-500">Sem dados nos últimos 7 dias</p>
           </div>
         )}
       </div>
-    </div>
-  );
-}
 
-function StatCard({ icon: Icon, label, value, color }: any) {
-  return (
-    <div className="bg-white rounded-3xl shadow-lg p-6 hover:shadow-xl transition">
-      <div className="flex items-center justify-between mb-2">
-        <div className={`p-3 rounded-2xl ${color}`}>
-          <Icon className="w-6 h-6" />
+      {/* Entregadores ativos + Alertas */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-white rounded-3xl shadow-lg p-6">
+          <h2 className="text-lg font-bold text-[#2d6a4f] flex items-center gap-2 mb-4">
+            <Truck className="w-5 h-5" />
+            Entregadores Disponíveis
+          </h2>
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 bg-[#f0f4f0] rounded-full flex items-center justify-center">
+              <span className="text-3xl font-bold text-[#2d6a4f]">
+                {stats.activeDeliveryAgents}
+              </span>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">
+                {stats.activeDeliveryAgents === 1
+                  ? 'entregador disponível agora'
+                  : 'entregadores disponíveis agora'}
+              </p>
+              <Link
+                href="/admin/delivery"
+                className="text-sm text-[#2d6a4f] font-medium hover:underline flex items-center gap-1 mt-1"
+              >
+                Gerir entregadores
+                <ArrowUpRight className="w-3 h-3" />
+              </Link>
+            </div>
+          </div>
         </div>
-      </div>
-      <h3 className="text-2xl font-bold text-gray-800">{value}</h3>
-      <p className="text-sm text-gray-500 mt-1">{label}</p>
-    </div>
-  );
-}
 
-function SmallStatCard({ icon: Icon, label, value, color }: any) {
-  return (
-    <div className="bg-white rounded-2xl shadow-lg p-4 flex items-center gap-4 hover:shadow-xl transition">
-      <div className={`p-3 rounded-2xl ${color}`}>
-        <Icon className="w-5 h-5" />
+        {stats.lowStockProducts > 0 && (
+          <div className="bg-white rounded-3xl shadow-lg p-6 border-l-4 border-orange-400">
+            <h2 className="text-lg font-bold text-orange-600 flex items-center gap-2 mb-4">
+              <AlertCircle className="w-5 h-5" />
+              Atenção ao Stock
+            </h2>
+            <p className="text-sm text-gray-600 mb-3">
+              <strong>{stats.lowStockProducts}</strong>{' '}
+              {stats.lowStockProducts === 1
+                ? 'produto está com stock baixo'
+                : 'produtos estão com stock baixo'}{' '}
+              (menos de 10 unidades).
+            </p>
+            <Link
+              href="/admin/products"
+              className="text-sm text-[#2d6a4f] font-medium hover:underline flex items-center gap-1"
+            >
+              Ver produtos
+              <ArrowUpRight className="w-3 h-3" />
+            </Link>
+          </div>
+        )}
       </div>
-      <div>
-        <h4 className="text-xl font-bold text-gray-800">{value}</h4>
-        <p className="text-xs text-gray-500">{label}</p>
+
+      {/* Pedidos recentes */}
+      <div className="bg-white rounded-3xl shadow-lg overflow-hidden">
+        <div className="flex items-center justify-between p-6 border-b">
+          <h2 className="text-lg font-bold text-[#2d6a4f] flex items-center gap-2">
+            <ShoppingBag className="w-5 h-5" />
+            Pedidos Recentes
+          </h2>
+          <Link
+            href="/admin/orders"
+            className="text-sm text-[#2d6a4f] font-medium hover:underline flex items-center gap-1"
+          >
+            Ver todos
+            <ArrowUpRight className="w-3 h-3" />
+          </Link>
+        </div>
+
+        {recentOrders.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-[#f8f6f4]">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    Pedido
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    Cliente
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    Total
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    Status
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    Data
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {recentOrders.map((order) => {
+                  const badge = getStatusBadge(order.status);
+                  return (
+                    <tr key={order.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 font-medium text-gray-800">
+                        {formatOrderNumber(order.id)}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600">
+                        {order.customer_name || 'Cliente'}
+                      </td>
+                      <td className="px-4 py-3 font-bold text-[#2d6a4f]">
+                        {formatCurrency(order.total_amount)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`px-3 py-1 rounded-full text-xs font-medium ${badge.color}`}
+                        >
+                          {badge.label}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-500">
+                        {formatDate(order.created_at)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="text-center py-12">
+            <ShoppingBag className="w-12 h-12 text-gray-300 mx-auto mb-2" />
+            <p className="text-gray-500">Nenhum pedido ainda</p>
+          </div>
+        )}
       </div>
     </div>
   );

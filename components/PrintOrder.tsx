@@ -1,587 +1,404 @@
 // components/PrintOrder.tsx
 'use client';
 
-import { Printer } from 'lucide-react';
-import { useState } from 'react';
+import { useRef } from 'react';
+import { useReactToPrint } from 'react-to-print';
+import { Printer, X } from 'lucide-react';
+
+// ============================================================
+// TIPOS
+// ============================================================
+type OrderItem = {
+  id: string;
+  product_name: string;
+  quantity: number;
+  unit_price: number;
+  total_price: number;
+};
 
 type Order = {
   id: string;
-  order_number: string;
   customer_name: string;
   customer_phone: string;
-  customer_address: string;
-  items: any[];
-  total_amount: number;
-  delivery_fee: number;
-  subtotal: number;
+  delivery_address: string;
   status: string;
+  subtotal: number;
+  delivery_fee: number;
+  total_amount: number;
   payment_method: string;
   created_at: string;
-  delivery_time: string;
-  
-  qr_code: string;
-  updated_at?: string;
+  delivery_lat?: number | null;
+  delivery_lng?: number | null;
+  items?: OrderItem[];
 };
 
-interface PrintOrderProps {
+type PrintOrderProps = {
   order: Order;
-  buttonText?: string;
-  buttonVariant?: 'primary' | 'secondary' | 'outline';
-  className?: string;
+  isOpen: boolean;
+  onClose: () => void;
+};
+
+// ============================================================
+// FORMATADORES
+// ============================================================
+const formatCurrency = (value: number) => {
+  return new Intl.NumberFormat('pt-AO', {
+    style: 'currency',
+    currency: 'AOA',
+    minimumFractionDigits: 0,
+  }).format(value);
+};
+
+const formatDate = (dateString: string) => {
+  return new Date(dateString).toLocaleDateString('pt-AO', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+const formatOrderNumber = (id: string) => {
+  return `#${id.slice(0, 8).toUpperCase()}`;
+};
+
+// ============================================================
+// VIA 1 — EQUIPE DE COMPRAS
+// ============================================================
+function ViaCompras({ order }: { order: Order }) {
+  return (
+    <div className="p-4 text-xs text-black">
+      <div className="flex justify-between items-start mb-3">
+        <div>
+          <h1 className="text-lg font-bold">MERCADO DO 30</h1>
+          <p className="text-xs">30 Express — Via 1: EQUIPE DE COMPRAS</p>
+        </div>
+        <div className="text-right">
+          <p className="font-bold text-base">{formatOrderNumber(order.id)}</p>
+          <p className="text-xs">{formatDate(order.created_at)}</p>
+        </div>
+      </div>
+
+      <div className="mb-3">
+        <p className="font-bold">CLIENTE:</p>
+        <p>{order.customer_name}</p>
+        <p>Tel: {order.customer_phone}</p>
+      </div>
+
+      <div className="mb-3">
+        <p className="font-bold">ENDEREÇO DE ENTREGA:</p>
+        <p>{order.delivery_address}</p>
+        {order.delivery_lat && order.delivery_lng && (
+          <p className="text-xs">
+            GPS: {order.delivery_lat.toFixed(5)},{' '}
+            {order.delivery_lng.toFixed(5)}
+          </p>
+        )}
+      </div>
+
+      <table className="w-full border-collapse border border-black text-xs mb-3">
+        <thead>
+          <tr className="bg-gray-200">
+            <th className="border border-black px-1 py-1 text-left">Item</th>
+            <th className="border border-black px-1 py-1 text-center w-12">
+              Qtd
+            </th>
+            <th className="border border-black px-1 py-1 text-right w-20">
+              Preço
+            </th>
+            <th className="border border-black px-1 py-1 text-right w-24">
+              Total
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {order.items?.map((item) => (
+            <tr key={item.id}>
+              <td className="border border-black px-1 py-1">
+                {item.product_name}
+              </td>
+              <td className="border border-black px-1 py-1 text-center">
+                {item.quantity}
+              </td>
+              <td className="border border-black px-1 py-1 text-right">
+                {formatCurrency(item.unit_price)}
+              </td>
+              <td className="border border-black px-1 py-1 text-right">
+                {formatCurrency(item.total_price)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div className="flex justify-end">
+        <div className="w-56">
+          <div className="flex justify-between text-xs">
+            <span>Subtotal:</span>
+            <span>{formatCurrency(order.subtotal)}</span>
+          </div>
+          <div className="flex justify-between text-xs">
+            <span>Taxa de Entrega:</span>
+            <span>{formatCurrency(order.delivery_fee)}</span>
+          </div>
+          <div className="flex justify-between font-bold text-sm border-t border-black mt-1 pt-1">
+            <span>TOTAL:</span>
+            <span>{formatCurrency(order.total_amount)}</span>
+          </div>
+          <div className="flex justify-between text-xs mt-1">
+            <span>Pagamento:</span>
+            <span className="capitalize">
+              {order.payment_method || 'Não informado'}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-6 pt-2 text-xs">
+        <p>Preparado por: _________________________</p>
+      </div>
+    </div>
+  );
 }
 
-export function PrintOrder({ 
-  order, 
-  buttonText = '🖨️ Imprimir',
-  buttonVariant = 'primary',
-  className = ''
-}: PrintOrderProps) {
-  const [isPrinting, setIsPrinting] = useState(false);
+// ============================================================
+// VIA 2 — CLIENTE (com assinatura)
+// ============================================================
+function ViaCliente({ order }: { order: Order }) {
+  return (
+    <div className="p-4 text-xs text-black">
+      <div className="flex justify-between items-start mb-3">
+        <div>
+          <h1 className="text-lg font-bold">MERCADO DO 30</h1>
+          <p className="text-xs">30 Express — Via 2: CLIENTE</p>
+        </div>
+        <div className="text-right">
+          <p className="font-bold text-base">{formatOrderNumber(order.id)}</p>
+          <p className="text-xs">{formatDate(order.created_at)}</p>
+        </div>
+      </div>
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('pt-AO', {
-      style: 'currency',
-      currency: 'AOA',
-      minimumFractionDigits: 0
-    }).format(value);
-  };
+      <div className="mb-2">
+        <p className="font-bold">CLIENTE:</p>
+        <p>{order.customer_name}</p>
+        <p>Tel: {order.customer_phone}</p>
+      </div>
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString('pt-AO', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
+      <div className="mb-2">
+        <p className="font-bold">ENDEREÇO:</p>
+        <p>{order.delivery_address}</p>
+      </div>
 
-  const getStatusLabel = (status: string) => {
-    const labels: Record<string, string> = {
-      pending: 'Pendente',
-      confirmed: 'Confirmado',
-      preparing: 'Preparando',
-      out_for_delivery: 'Em Rota',
-      delivered: 'Entregue',
-      cancelled: 'Cancelado'
-    };
-    return labels[status] || status;
-  };
+      <table className="w-full border-collapse border border-black text-xs mb-3">
+        <thead>
+          <tr className="bg-gray-200">
+            <th className="border border-black px-1 py-1 text-left">Item</th>
+            <th className="border border-black px-1 py-1 text-center w-12">
+              Qtd
+            </th>
+            <th className="border border-black px-1 py-1 text-right w-24">
+              Total
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {order.items?.map((item) => (
+            <tr key={item.id}>
+              <td className="border border-black px-1 py-1">
+                {item.product_name}
+              </td>
+              <td className="border border-black px-1 py-1 text-center">
+                {item.quantity}
+              </td>
+              <td className="border border-black px-1 py-1 text-right">
+                {formatCurrency(item.total_price)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
 
-  const getPaymentLabel = (method: string) => {
-    const labels: Record<string, string> = {
-      cash: 'Dinheiro',
-      card: 'Cartão',
-      mobile_money: 'Mobile Money'
-    };
-    return labels[method] || method;
-  };
-
-  const handlePrint = () => {
-    setIsPrinting(true);
-
-    const printWindow = window.open('', '_blank', 'width=300,height=600');
-    if (!printWindow) {
-      setIsPrinting(false);
-      alert('Por favor, permita pop-ups para imprimir.');
-      return;
-    }
-
-    // Gerar QR Code
-    const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${order.qr_code || order.order_number}`;
-
-    // 🔥 HTML PARA IMPRESSORA TÉRMICA (80mm)
-    const html = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Pedido ${order.order_number}</title>
-          <style>
-            * { 
-              margin: 0; 
-              padding: 0; 
-              box-sizing: border-box; 
-            }
-            body { 
-              font-family: 'Courier New', monospace;
-              font-size: 11px;
-              width: 80mm;
-              padding: 0;
-              margin: 0 auto;
-              background: white;
-              color: #000;
-            }
-            
-            /* Estilo geral para impressão térmica */
-            .thermal-paper {
-              width: 80mm;
-              padding: 5px 8px;
-              margin: 0 auto;
-            }
-            
-            .center { text-align: center; }
-            .right { text-align: right; }
-            .left { text-align: left; }
-            
-            .header {
-              text-align: center;
-              border-bottom: 1px dashed #000;
-              padding-bottom: 8px;
-              margin-bottom: 8px;
-            }
-            .header .store-name {
-              font-size: 16px;
-              font-weight: bold;
-              letter-spacing: 2px;
-            }
-            .header .store-sub {
-              font-size: 10px;
-              color: #555;
-            }
-            .header .order-number {
-              font-size: 14px;
-              font-weight: bold;
-              margin-top: 4px;
-            }
-            
-            .divider {
-              border-top: 1px dashed #000;
-              margin: 6px 0;
-            }
-            .divider-double {
-              border-top: 2px solid #000;
-              margin: 6px 0;
-            }
-            
-            .info-row {
-              display: flex;
-              justify-content: space-between;
-              padding: 2px 0;
-              font-size: 10px;
-            }
-            .info-row .label { color: #555; }
-            .info-row .value { font-weight: bold; }
-            
-            table {
-              width: 100%;
-              border-collapse: collapse;
-              margin: 6px 0;
-              font-size: 10px;
-            }
-            table th {
-              text-align: left;
-              border-bottom: 1px dashed #000;
-              padding: 3px 0;
-              font-size: 9px;
-              text-transform: uppercase;
-              color: #555;
-            }
-            table td {
-              padding: 3px 0;
-              border-bottom: 1px dotted #ddd;
-            }
-            table .qtd { text-align: center; width: 20%; }
-            table .price { text-align: right; width: 25%; }
-            table .total { text-align: right; width: 30%; }
-            
-            .totals {
-              margin: 6px 0;
-              padding: 4px 0;
-            }
-            .totals .row {
-              display: flex;
-              justify-content: space-between;
-              padding: 2px 0;
-              font-size: 10px;
-            }
-            .totals .grand-total {
-              font-size: 14px;
-              font-weight: bold;
-              border-top: 2px solid #000;
-              padding-top: 4px;
-              margin-top: 4px;
-            }
-            
-            .qr-section {
-              text-align: center;
-              margin: 8px 0;
-              padding: 6px;
-              border: 1px dashed #999;
-            }
-            .qr-section img {
-              max-width: 80px;
-              max-height: 80px;
-            }
-            .qr-section .qr-label {
-              font-size: 8px;
-              color: #888;
-              margin-top: 2px;
-            }
-            
-            .signature {
-              margin: 10px 0;
-              padding-top: 6px;
-              border-top: 1px dashed #000;
-            }
-            .signature .line {
-              display: flex;
-              justify-content: space-between;
-              margin-top: 4px;
-            }
-            .signature .line span {
-              border-bottom: 1px solid #000;
-              min-width: 80px;
-              padding-bottom: 2px;
-              font-size: 9px;
-            }
-            
-            .footer {
-              text-align: center;
-              font-size: 8px;
-              color: #888;
-              margin-top: 8px;
-              padding-top: 6px;
-              border-top: 1px dashed #ddd;
-            }
-            
-            .copy-badge {
-              display: inline-block;
-              font-size: 8px;
-              padding: 2px 6px;
-              border: 1px solid #000;
-              border-radius: 2px;
-              margin: 4px 0;
-            }
-            
-            .page-break {
-              page-break-after: always;
-              border-bottom: 3px double #000;
-              margin-bottom: 8px;
-              padding-bottom: 8px;
-            }
-            
-            @media print {
-              body { margin: 0; padding: 0; }
-              .no-print { display: none; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="thermal-paper">
-            
-            <!-- ============================================ -->
-            <!-- CÓPIA 1 - EQUIPE DE COMPRAS -->
-            <!-- ============================================ -->
-            <div class="page-break">
-              <div class="header">
-                <div class="store-name">🏪 30 EXPRESS</div>
-                <div class="store-sub">MERCADO 30 - DELIVERY</div>
-                <div class="copy-badge">🔵 CÓPIA 1 - COMPRAS</div>
-                <div class="order-number"># ${order.order_number}</div>
-              </div>
-
-              <div class="info-row">
-                <span class="label">Cliente:</span>
-                <span class="value">${order.customer_name || 'Cliente'}</span>
-              </div>
-              <div class="info-row">
-                <span class="label">Telefone:</span>
-                <span class="value">${order.customer_phone || '-'}</span>
-              </div>
-              <div class="info-row">
-                <span class="label">Endereço:</span>
-                <span class="value" style="font-size:9px;">${order.customer_address || '-'}</span>
-              </div>
-              <div class="divider"></div>
-              <div class="info-row">
-                <span class="label">Data:</span>
-                <span class="value">${formatDate(order.created_at)}</span>
-              </div>
-              <div class="info-row">
-                <span class="label">Status:</span>
-                <span class="value">${getStatusLabel(order.status)}</span>
-              </div>
-              <div class="info-row">
-                <span class="label">Pagamento:</span>
-                <span class="value">${getPaymentLabel(order.payment_method)}</span>
-              </div>
-              <div class="divider"></div>
-
-              <table>
-                <thead>
-                  <tr>
-                    <th>Produto</th>
-                    <th class="qtd">Qtd</th>
-                    <th class="price">Preço</th>
-                    <th class="total">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${order.items && order.items.length > 0 ? order.items.map((item: any) => `
-                    <tr>
-                      <td style="font-size:9px;">${item.product_name || 'Produto'}</td>
-                      <td class="qtd">${item.quantity || 1}</td>
-                      <td class="price">${formatCurrency(item.unit_price || item.price || 0)}</td>
-                      <td class="total">${formatCurrency((item.unit_price || item.price || 0) * (item.quantity || 1))}</td>
-                    </tr>
-                  `).join('') : `
-                    <tr>
-                      <td colspan="4" style="text-align:center; color:#999;">Nenhum item</td>
-                    </tr>
-                  `}
-                </tbody>
-              </table>
-
-              <div class="divider-double"></div>
-              <div class="totals">
-                <div class="row">
-                  <span>Subtotal</span>
-                  <span>${formatCurrency(order.subtotal || 0)}</span>
-                </div>
-                <div class="row">
-                  <span>Taxa Entrega</span>
-                  <span>${formatCurrency(order.delivery_fee || 0)}</span>
-                </div>
-                <div class="row grand-total">
-                  <span>TOTAL</span>
-                  <span>${formatCurrency(order.total_amount || 0)}</span>
-                </div>
-              </div>
-
-              <div class="qr-section">
-                <img src="${qrCodeUrl}" alt="QR" />
-                <div class="qr-label">${order.qr_code || order.order_number}</div>
-              </div>
-
-              <div class="signature">
-                <div class="line">
-                  <span>Entregador</span>
-                  <span>Cliente</span>
-                </div>
-              </div>
-
-              <div class="footer">
-                30 Express • ${formatDate(new Date().toISOString())}
-              </div>
-            </div>
-
-            <!-- ============================================ -->
-            <!-- CÓPIA 2 - CLIENTE -->
-            <!-- ============================================ -->
-            <div class="page-break">
-              <div class="header">
-                <div class="store-name">🏪 30 EXPRESS</div>
-                <div class="store-sub">MERCADO 30 - DELIVERY</div>
-                <div class="copy-badge">🟢 CÓPIA 2 - CLIENTE</div>
-                <div class="order-number"># ${order.order_number}</div>
-              </div>
-
-              <div class="info-row">
-                <span class="label">Cliente:</span>
-                <span class="value">${order.customer_name || 'Cliente'}</span>
-              </div>
-              <div class="info-row">
-                <span class="label">Telefone:</span>
-                <span class="value">${order.customer_phone || '-'}</span>
-              </div>
-              <div class="info-row">
-                <span class="label">Endereço:</span>
-                <span class="value" style="font-size:9px;">${order.customer_address || '-'}</span>
-              </div>
-              <div class="divider"></div>
-
-              <table>
-                <thead>
-                  <tr>
-                    <th>Produto</th>
-                    <th class="qtd">Qtd</th>
-                    <th class="price">Preço</th>
-                    <th class="total">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${order.items && order.items.length > 0 ? order.items.map((item: any) => `
-                    <tr>
-                      <td style="font-size:9px;">${item.product_name || 'Produto'}</td>
-                      <td class="qtd">${item.quantity || 1}</td>
-                      <td class="price">${formatCurrency(item.unit_price || item.price || 0)}</td>
-                      <td class="total">${formatCurrency((item.unit_price || item.price || 0) * (item.quantity || 1))}</td>
-                    </tr>
-                  `).join('') : `
-                    <tr>
-                      <td colspan="4" style="text-align:center; color:#999;">Nenhum item</td>
-                    </tr>
-                  `}
-                </tbody>
-              </table>
-
-              <div class="divider-double"></div>
-              <div class="totals">
-                <div class="row">
-                  <span>Subtotal</span>
-                  <span>${formatCurrency(order.subtotal || 0)}</span>
-                </div>
-                <div class="row">
-                  <span>Taxa Entrega</span>
-                  <span>${formatCurrency(order.delivery_fee || 0)}</span>
-                </div>
-                <div class="row grand-total">
-                  <span>TOTAL</span>
-                  <span>${formatCurrency(order.total_amount || 0)}</span>
-                </div>
-              </div>
-
-              <div class="qr-section">
-                <img src="${qrCodeUrl}" alt="QR" />
-                <div class="qr-label">${order.qr_code || order.order_number}</div>
-              </div>
-
-              <div class="signature">
-                <div class="line">
-                  <span>Cliente</span>
-                </div>
-              </div>
-
-              <div class="footer">
-                30 Express • ${formatDate(new Date().toISOString())}
-              </div>
-            </div>
-
-            <!-- ============================================ -->
-            <!-- CÓPIA 3 - ADMINISTRATIVO -->
-            <!-- ============================================ -->
-            <div>
-              <div class="header">
-                <div class="store-name">🏪 30 EXPRESS</div>
-                <div class="store-sub">MERCADO 30 - DELIVERY</div>
-                <div class="copy-badge">🔴 CÓPIA 3 - ADMIN</div>
-                <div class="order-number"># ${order.order_number}</div>
-              </div>
-
-              <div class="info-row">
-                <span class="label">Cliente:</span>
-                <span class="value">${order.customer_name || 'Cliente'}</span>
-              </div>
-              <div class="info-row">
-                <span class="label">Telefone:</span>
-                <span class="value">${order.customer_phone || '-'}</span>
-              </div>
-              <div class="info-row">
-                <span class="label">Endereço:</span>
-                <span class="value" style="font-size:9px;">${order.customer_address || '-'}</span>
-              </div>
-              <div class="divider"></div>
-
-              <table>
-                <thead>
-                  <tr>
-                    <th>Produto</th>
-                    <th class="qtd">Qtd</th>
-                    <th class="price">Preço</th>
-                    <th class="total">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${order.items && order.items.length > 0 ? order.items.map((item: any) => `
-                    <tr>
-                      <td style="font-size:9px;">${item.product_name || 'Produto'}</td>
-                      <td class="qtd">${item.quantity || 1}</td>
-                      <td class="price">${formatCurrency(item.unit_price || item.price || 0)}</td>
-                      <td class="total">${formatCurrency((item.unit_price || item.price || 0) * (item.quantity || 1))}</td>
-                    </tr>
-                  `).join('') : `
-                    <tr>
-                      <td colspan="4" style="text-align:center; color:#999;">Nenhum item</td>
-                    </tr>
-                  `}
-                </tbody>
-              </table>
-
-              <div class="divider-double"></div>
-              <div class="totals">
-                <div class="row">
-                  <span>Subtotal</span>
-                  <span>${formatCurrency(order.subtotal || 0)}</span>
-                </div>
-                <div class="row">
-                  <span>Taxa Entrega</span>
-                  <span>${formatCurrency(order.delivery_fee || 0)}</span>
-                </div>
-                <div class="row grand-total">
-                  <span>TOTAL</span>
-                  <span>${formatCurrency(order.total_amount || 0)}</span>
-                </div>
-              </div>
-
-              <div class="qr-section">
-                <img src="${qrCodeUrl}" alt="QR" />
-                <div class="qr-label">${order.qr_code || order.order_number}</div>
-              </div>
-
-              <div class="signature">
-                <div class="line">
-                  <span>Entregador</span>
-                </div>
-              </div>
-
-              <div class="footer">
-                30 Express • ${formatDate(new Date().toISOString())}
-              </div>
-            </div>
-
+      <div className="flex justify-end mb-8">
+        <div className="w-56">
+          <div className="flex justify-between font-bold text-sm">
+            <span>TOTAL A PAGAR:</span>
+            <span>{formatCurrency(order.total_amount)}</span>
           </div>
+          <div className="flex justify-between text-xs">
+            <span>Pagamento:</span>
+            <span className="capitalize">
+              {order.payment_method || 'Não informado'}
+            </span>
+          </div>
+        </div>
+      </div>
 
-          <script>
-            window.onload = function() {
-              setTimeout(function() {
-                window.print();
-                window.close();
-              }, 500);
-            };
-          </script>
-        </body>
-      </html>
-    `;
+      <div className="mt-12 pt-4">
+        <div className="border-t border-black w-64 mb-1"></div>
+        <p className="text-xs">Assinatura do Cliente</p>
+        <p className="text-xs mt-1">Data: ____ / ____ / ________</p>
+      </div>
+    </div>
+  );
+}
 
-    printWindow.document.write(html);
-    printWindow.document.close();
-    printWindow.focus();
-    
-    setTimeout(() => {
-      setIsPrinting(false);
-    }, 2000);
-  };
+// ============================================================
+// VIA 3 — ADMINISTRATIVO (com assinatura entregador)
+// ============================================================
+function ViaAdministrativo({ order }: { order: Order }) {
+  return (
+    <div className="p-4 text-xs text-black">
+      <div className="flex justify-between items-start mb-3">
+        <div>
+          <h1 className="text-lg font-bold">MERCADO DO 30</h1>
+          <p className="text-xs">30 Express — Via 3: ADMINISTRATIVO</p>
+        </div>
+        <div className="text-right">
+          <p className="font-bold text-base">{formatOrderNumber(order.id)}</p>
+          <p className="text-xs">{formatDate(order.created_at)}</p>
+        </div>
+      </div>
 
-  const getButtonStyles = () => {
-    switch (buttonVariant) {
-      case 'primary':
-        return 'bg-[#2d6a4f] text-white hover:bg-[#1b4332]';
-      case 'secondary':
-        return 'bg-gray-200 text-gray-800 hover:bg-gray-300';
-      case 'outline':
-        return 'border-2 border-[#2d6a4f] text-[#2d6a4f] hover:bg-[#2d6a4f] hover:text-white';
-      default:
-        return 'bg-[#2d6a4f] text-white hover:bg-[#1b4332]';
-    }
-  };
+      <div className="mb-2">
+        <p className="font-bold">CLIENTE:</p>
+        <p>{order.customer_name}</p>
+        <p>Tel: {order.customer_phone}</p>
+      </div>
+
+      <div className="mb-2">
+        <p className="font-bold">ENDEREÇO:</p>
+        <p>{order.delivery_address}</p>
+      </div>
+
+      <div className="flex justify-between text-sm mb-8">
+        <div>
+          <p className="text-xs">Status do Pedido:</p>
+          <p className="font-bold capitalize">{order.status}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-xs">Total:</p>
+          <p className="font-bold text-base">
+            {formatCurrency(order.total_amount)}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-12 pt-4">
+        <div className="border-t border-black w-64 mb-1"></div>
+        <p className="text-xs">Assinatura do Entregador</p>
+        <p className="text-xs mt-1">Data: ____ / ____ / ________</p>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// CONTEÚDO COMPLETO (3 vias)
+// ============================================================
+function PrintContent({ order }: { order: Order }) {
+  return (
+    <div className="bg-white">
+      <div className="mb-2 pb-2 border-b-2 border-dashed border-black">
+        <ViaCompras order={order} />
+      </div>
+
+      <div className="mb-2 pb-2 border-b-2 border-dashed border-black">
+        <ViaCliente order={order} />
+      </div>
+
+      <div>
+        <ViaAdministrativo order={order} />
+      </div>
+
+      <div className="mt-4 pt-3 border-t border-black text-center text-xs text-gray-600">
+        <p>30 Express — Mercado do 30 | Obrigado pela preferência!</p>
+        <p>www.30express.ao</p>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// COMPONENTE PRINCIPAL
+// ============================================================
+export default function PrintOrder({
+  order,
+  isOpen,
+  onClose,
+}: PrintOrderProps) {
+  const componentRef = useRef<HTMLDivElement>(null);
+
+  // ✅ react-to-print v3: contentRef + onBeforePrint
+  const handlePrint = useReactToPrint({
+    contentRef: componentRef,
+    documentTitle: `Pedido-${formatOrderNumber(order.id)}`,
+    onBeforePrint: () => {
+      return Promise.resolve();
+    },
+    onAfterPrint: () => {
+      console.log('✅ Impressão concluída');
+    },
+    onPrintError: (errorLocation, error) => {
+      console.error('❌ Erro na impressão:', errorLocation, error);
+      alert('Erro ao imprimir. Verifique se a impressora está conectada.');
+    },
+  });
+
+  if (!isOpen) return null;
 
   return (
-    <button
-      onClick={handlePrint}
-      disabled={isPrinting}
-      className={`px-6 py-3 rounded-xl transition font-medium flex items-center gap-2 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed ${getButtonStyles()} ${className}`}
-    >
-      {isPrinting ? (
-        <>
-          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-          Imprimindo...
-        </>
-      ) : (
-        <>
-          <Printer className="w-4 h-4" />
-          {buttonText}
-        </>
-      )}
-    </button>
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-3xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b">
+          <div className="flex items-center gap-2">
+            <Printer className="w-6 h-6 text-[#2d6a4f]" />
+            <div>
+              <h2 className="text-xl font-bold text-[#2d6a4f]">
+                Imprimir Pedido
+              </h2>
+              <p className="text-xs text-gray-500">
+                3 vias: Compras, Cliente e Administrativo
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-100 rounded-full transition"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Preview */}
+        <div className="flex-1 overflow-y-auto p-4 bg-gray-100">
+          <div
+            ref={componentRef}
+            className="bg-white shadow-lg mx-auto"
+            style={{ width: '210mm', minHeight: '297mm' }}
+          >
+            <PrintContent order={order} />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex gap-3 p-6 border-t bg-white">
+          <button
+            onClick={() => handlePrint()}
+            className="flex-1 py-3 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition font-medium flex items-center justify-center gap-2"
+          >
+            <Printer className="w-4 h-4" />
+            Imprimir 3 Vias
+          </button>
+          <button
+            onClick={onClose}
+            className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200 transition font-medium"
+          >
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

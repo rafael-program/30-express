@@ -9,25 +9,18 @@ import {
   User as UserIcon,
   Mail,
   Phone,
-  Calendar,
   ChevronLeft,
   ChevronRight,
   Eye,
-  Shield,
   Ban,
   CheckCircle,
-  XCircle,
-  AlertCircle,
-  UserCheck,
-  UserX,
   Filter,
   Download,
-  MoreVertical,
   Edit,
-  Trash2,
-  Clock,
   ShoppingBag,
-  Activity
+  Activity,
+  X,
+  DollarSign,
 } from 'lucide-react';
 
 type User = {
@@ -37,15 +30,31 @@ type User = {
   phone: string;
   address: string;
   neighborhood: string;
-  role: 'customer' | 'admin' | 'manager' | 'delivery';
+  role: 'customer' | 'admin' | 'manager' | 'delivery' | 'suspended';
   created_at: string;
   updated_at: string;
   avatar_url: string;
-  // Dados agregados
   order_count?: number;
   total_spent?: number;
   last_order?: string;
   status?: 'active' | 'inactive' | 'suspended';
+};
+
+type ProfileRow = {
+  id: string;
+  full_name: string | null;
+  phone: string | null;
+  address: string | null;
+  neighborhood: string | null;
+  role: string | null;
+  created_at: string;
+  updated_at: string;
+  avatar_url: string | null;
+};
+
+type OrderRow = {
+  client_id: string;
+  total_amount: number | null;
 };
 
 export default function AdminUsersPage() {
@@ -57,99 +66,122 @@ export default function AdminUsersPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const ITEMS_PER_PAGE = 10;
 
+  // ============================================================
+  // BUSCAR USUÁRIOS
+  // ============================================================
   useEffect(() => {
+    let cancelled = false;
+
+    const fetchUsers = async () => {
+      setLoading(true);
+      try {
+        let query = supabase
+          .from('profiles')
+          .select('*', { count: 'exact' });
+
+        if (roleFilter !== 'all') {
+          query = query.eq('role', roleFilter);
+        }
+
+        if (searchTerm) {
+          query = query.or(
+            `full_name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%,address.ilike.%${searchTerm}%`
+          );
+        }
+
+        const from = (currentPage - 1) * ITEMS_PER_PAGE;
+        const to = from + ITEMS_PER_PAGE - 1;
+
+        const { data: profilesData, error, count } = await query
+          .range(from, to)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        const userIds = profilesData?.map((p) => p.id) || [];
+        let usersWithEmail: User[] = [];
+
+        if (userIds.length > 0) {
+          const { data: authUsers } = await supabase
+            .from('users')
+            .select('id, email')
+            .in('id', userIds);
+
+          const { data: orders } = await supabase
+            .from('orders')
+            .select('client_id, total_amount')
+            .in('client_id', userIds);
+
+          const orderStats: Record<string, { count: number; total: number }> = {};
+          (orders as OrderRow[] | null)?.forEach((order) => {
+            if (!orderStats[order.client_id]) {
+              orderStats[order.client_id] = { count: 0, total: 0 };
+            }
+            orderStats[order.client_id].count += 1;
+            orderStats[order.client_id].total += order.total_amount || 0;
+          });
+
+          usersWithEmail =
+            (profilesData as ProfileRow[] | null)?.map((profile) => {
+              const authUser = authUsers?.find((u) => u.id === profile.id);
+              const stats = orderStats[profile.id] || { count: 0, total: 0 };
+              return {
+                id: profile.id,
+                email: authUser?.email || 'Email não disponível',
+                full_name: profile.full_name || '',
+                phone: profile.phone || '',
+                address: profile.address || '',
+                neighborhood: profile.neighborhood || '',
+                role: (profile.role as User['role']) || 'customer',
+                created_at: profile.created_at,
+                updated_at: profile.updated_at,
+                avatar_url: profile.avatar_url || '',
+                order_count: stats.count,
+                total_spent: stats.total,
+                status: 'active' as const,
+              };
+            }) || [];
+        }
+
+        if (!cancelled) {
+          setUsers(usersWithEmail);
+          setTotalPages(Math.ceil((count || 0) / ITEMS_PER_PAGE));
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error('Erro ao buscar usuários:', error);
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
     fetchUsers();
-  }, [currentPage, roleFilter, searchTerm]);
 
-  const fetchUsers = async () => {
-    setLoading(true);
-    try {
-      // Buscar perfis
-      let query = supabase
-        .from('profiles')
-        .select('*', { count: 'exact' });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentPage, roleFilter, searchTerm, refreshKey]);
 
-      if (roleFilter !== 'all') {
-        query = query.eq('role', roleFilter);
-      }
-
-      if (searchTerm) {
-        query = query.or(`full_name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%,address.ilike.%${searchTerm}%`);
-      }
-
-      const from = (currentPage - 1) * ITEMS_PER_PAGE;
-      const to = from + ITEMS_PER_PAGE - 1;
-
-      const { data: profilesData, error, count } = await query
-        .range(from, to)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      // Buscar emails dos usuários
-      const userIds = profilesData?.map(p => p.id) || [];
-      let usersWithEmail: any[] = [];
-
-      if (userIds.length > 0) {
-        const { data: authUsers } = await supabase
-          .from('users')
-          .select('id, email')
-          .in('id', userIds);
-
-        // Buscar estatísticas de pedidos
-        const { data: orders } = await supabase
-          .from('orders')
-          .select('client_id, total_amount')
-          .in('client_id', userIds);
-
-        // Calcular estatísticas por usuário
-        const orderStats: Record<string, { count: number; total: number }> = {};
-        orders?.forEach((order: any) => {
-          if (!orderStats[order.client_id]) {
-            orderStats[order.client_id] = { count: 0, total: 0 };
-          }
-          orderStats[order.client_id].count += 1;
-          orderStats[order.client_id].total += order.total_amount || 0;
-        });
-
-        // Combinar dados
-        usersWithEmail = profilesData?.map(profile => {
-          const authUser = authUsers?.find(u => u.id === profile.id);
-          const stats = orderStats[profile.id] || { count: 0, total: 0 };
-          return {
-            ...profile,
-            email: authUser?.email || 'Email não disponível',
-            order_count: stats.count,
-            total_spent: stats.total,
-            status: profile.role === 'delivery' ? 'active' : 'active'
-          };
-        }) || [];
-      }
-
-      setUsers(usersWithEmail);
-      setTotalPages(Math.ceil((count || 0) / ITEMS_PER_PAGE));
-    } catch (error) {
-      console.error('Erro ao buscar usuários:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // ============================================================
+  // ATUALIZAR FUNÇÃO DO USUÁRIO
+  // ============================================================
   const updateUserRole = async (userId: string, newRole: string) => {
     try {
       const { error } = await supabase
         .from('profiles')
-        .update({ 
+        .update({
           role: newRole,
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
         })
         .eq('id', userId);
 
       if (error) throw error;
-      fetchUsers();
+      setRefreshKey((prev) => prev + 1);
       alert('✅ Função do usuário atualizada!');
     } catch (error) {
       console.error('Erro ao atualizar função:', error);
@@ -157,25 +189,30 @@ export default function AdminUsersPage() {
     }
   };
 
+  // ============================================================
+  // ATIVAR/SUSPENDER USUÁRIO
+  // ============================================================
   const toggleUserStatus = async (userId: string, currentStatus: string) => {
     const newStatus = currentStatus === 'active' ? 'suspended' : 'active';
-    
-    if (!confirm(`Deseja ${newStatus === 'active' ? 'ativar' : 'suspender'} este usuário?`)) return;
+
+    if (
+      !confirm(
+        `Deseja ${newStatus === 'active' ? 'ativar' : 'suspender'} este usuário?`
+      )
+    )
+      return;
 
     try {
-      // Atualizar status no perfil (usando role como status para simplificar)
-      // Poderíamos ter uma coluna status separada, mas por enquanto usamos role
-      // Para usuários delivery, podemos desativar
       const { error } = await supabase
         .from('profiles')
-        .update({ 
+        .update({
           role: newStatus === 'active' ? 'customer' : 'suspended',
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
         })
         .eq('id', userId);
 
       if (error) throw error;
-      fetchUsers();
+      setRefreshKey((prev) => prev + 1);
       alert(`✅ Usuário ${newStatus === 'active' ? 'ativado' : 'suspenso'}!`);
     } catch (error) {
       console.error('Erro ao atualizar status:', error);
@@ -183,13 +220,23 @@ export default function AdminUsersPage() {
     }
   };
 
+  // ============================================================
+  // FORÇAR REFRESH MANUAL (botão Filtrar)
+  // ============================================================
+  const refetchUsers = () => {
+    setRefreshKey((prev) => prev + 1);
+  };
+
+  // ============================================================
+  // FORMATADORES
+  // ============================================================
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('pt-AO', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     });
   };
 
@@ -197,7 +244,7 @@ export default function AdminUsersPage() {
     return new Intl.NumberFormat('pt-AO', {
       style: 'currency',
       currency: 'AOA',
-      minimumFractionDigits: 0
+      minimumFractionDigits: 0,
     }).format(value);
   };
 
@@ -213,23 +260,36 @@ export default function AdminUsersPage() {
   };
 
   const getStatusBadge = (status: string) => {
-    if (status === 'active' || status === 'customer' || status === 'admin' || status === 'delivery') {
+    if (
+      status === 'active' ||
+      status === 'customer' ||
+      status === 'admin' ||
+      status === 'delivery'
+    ) {
       return { label: 'Ativo', color: 'bg-green-100 text-green-700' };
     }
     return { label: 'Inativo', color: 'bg-gray-100 text-gray-500' };
   };
 
+  // ============================================================
+  // LOADING
+  // ============================================================
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-[#2d6a4f] mx-auto"></div>
-          <p className="mt-4 text-[#2d6a4f] font-medium">Carregando usuários...</p>
+          <p className="mt-4 text-[#2d6a4f] font-medium">
+            Carregando usuários...
+          </p>
         </div>
       </div>
     );
   }
 
+  // ============================================================
+  // RENDER
+  // ============================================================
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -239,7 +299,9 @@ export default function AdminUsersPage() {
             <Users className="w-8 h-8" />
             Clientes
           </h1>
-          <p className="text-gray-500 mt-1">Gerencie todos os usuários da plataforma</p>
+          <p className="text-gray-500 mt-1">
+            Gerencie todos os usuários da plataforma
+          </p>
         </div>
         <div className="flex items-center gap-3">
           <button className="px-4 py-2 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition flex items-center gap-2">
@@ -274,7 +336,7 @@ export default function AdminUsersPage() {
             <option value="customer">Cliente</option>
           </select>
           <button
-            onClick={fetchUsers}
+            onClick={refetchUsers}
             className="px-6 py-2 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition flex items-center gap-2"
           >
             <Filter className="w-4 h-4" />
@@ -289,13 +351,27 @@ export default function AdminUsersPage() {
           <table className="w-full">
             <thead className="bg-[#f8f6f4]">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usuário</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contato</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Função</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pedidos</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Gasto</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Usuário
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Contato
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Função
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Pedidos
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Total Gasto
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Ações
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -307,10 +383,14 @@ export default function AdminUsersPage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-[#f0f4f0] rounded-full flex items-center justify-center text-sm font-bold text-[#2d6a4f]">
-                          {user.full_name?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || 'U'}
+                          {user.full_name?.[0]?.toUpperCase() ||
+                            user.email?.[0]?.toUpperCase() ||
+                            'U'}
                         </div>
                         <div>
-                          <p className="font-medium text-gray-800">{user.full_name || 'Sem nome'}</p>
+                          <p className="font-medium text-gray-800">
+                            {user.full_name || 'Sem nome'}
+                          </p>
                           <p className="text-xs text-gray-400 flex items-center gap-1">
                             <Mail className="w-3 h-3" />
                             {user.email}
@@ -324,11 +404,15 @@ export default function AdminUsersPage() {
                           <Phone className="w-3 h-3" />
                           {user.phone || '-'}
                         </p>
-                        <p className="text-sm text-gray-500">{user.address || '-'}</p>
+                        <p className="text-sm text-gray-500">
+                          {user.address || '-'}
+                        </p>
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${roleBadge.color}`}>
+                      <span
+                        className={`px-3 py-1 rounded-full text-xs font-medium ${roleBadge.color}`}
+                      >
                         {roleBadge.label}
                       </span>
                     </td>
@@ -339,7 +423,9 @@ export default function AdminUsersPage() {
                       {user.total_spent ? formatCurrency(user.total_spent) : '-'}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusBadge.color}`}>
+                      <span
+                        className={`px-3 py-1 rounded-full text-xs font-medium ${statusBadge.color}`}
+                      >
                         {statusBadge.label}
                       </span>
                     </td>
@@ -357,7 +443,9 @@ export default function AdminUsersPage() {
                         </button>
                         <select
                           value={user.role || 'customer'}
-                          onChange={(e) => updateUserRole(user.id, e.target.value)}
+                          onChange={(e) =>
+                            updateUserRole(user.id, e.target.value)
+                          }
                           className="text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
                         >
                           <option value="customer">Cliente</option>
@@ -366,9 +454,13 @@ export default function AdminUsersPage() {
                           <option value="admin">Admin</option>
                         </select>
                         <button
-                          onClick={() => toggleUserStatus(user.id, user.status || 'active')}
+                          onClick={() =>
+                            toggleUserStatus(user.id, user.status || 'active')
+                          }
                           className="p-2 hover:bg-gray-100 rounded-lg transition"
-                          title={user.status === 'active' ? 'Suspender' : 'Ativar'}
+                          title={
+                            user.status === 'active' ? 'Suspender' : 'Ativar'
+                          }
                         >
                           {user.status === 'active' ? (
                             <Ban className="w-4 h-4 text-orange-400 hover:text-orange-600" />
@@ -400,14 +492,16 @@ export default function AdminUsersPage() {
             </div>
             <div className="flex gap-2">
               <button
-                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
                 disabled={currentPage === 1}
                 className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition disabled:opacity-50"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
               <button
-                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                onClick={() =>
+                  setCurrentPage((prev) => Math.min(totalPages, prev + 1))
+                }
                 disabled={currentPage === totalPages}
                 className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition disabled:opacity-50"
               >
@@ -439,19 +533,27 @@ export default function AdminUsersPage() {
               {/* Cabeçalho do Perfil */}
               <div className="flex items-center gap-6 pb-6 border-b border-gray-200">
                 <div className="w-20 h-20 bg-[#2d6a4f] rounded-full flex items-center justify-center text-3xl text-white font-bold">
-                  {selectedUser.full_name?.[0]?.toUpperCase() || selectedUser.email?.[0]?.toUpperCase() || 'U'}
+                  {selectedUser.full_name?.[0]?.toUpperCase() ||
+                    selectedUser.email?.[0]?.toUpperCase() ||
+                    'U'}
                 </div>
                 <div className="flex-1">
-                  <h3 className="text-xl font-bold text-gray-800">{selectedUser.full_name || 'Sem nome'}</h3>
+                  <h3 className="text-xl font-bold text-gray-800">
+                    {selectedUser.full_name || 'Sem nome'}
+                  </h3>
                   <p className="text-gray-500 flex items-center gap-1">
                     <Mail className="w-4 h-4" />
                     {selectedUser.email}
                   </p>
                   <div className="flex items-center gap-2 mt-2">
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${getRoleBadge(selectedUser.role || 'customer').color}`}>
+                    <span
+                      className={`px-3 py-1 rounded-full text-xs font-medium ${getRoleBadge(selectedUser.role || 'customer').color}`}
+                    >
                       {getRoleBadge(selectedUser.role || 'customer').label}
                     </span>
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusBadge(selectedUser.status || 'active').color}`}>
+                    <span
+                      className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusBadge(selectedUser.status || 'active').color}`}
+                    >
                       {getStatusBadge(selectedUser.status || 'active').label}
                     </span>
                   </div>
@@ -462,23 +564,33 @@ export default function AdminUsersPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-gray-500">Telefone</p>
-                  <p className="font-medium">{selectedUser.phone || 'Não informado'}</p>
+                  <p className="font-medium">
+                    {selectedUser.phone || 'Não informado'}
+                  </p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Cadastro</p>
-                  <p className="font-medium">{formatDate(selectedUser.created_at)}</p>
+                  <p className="font-medium">
+                    {formatDate(selectedUser.created_at)}
+                  </p>
                 </div>
                 <div className="col-span-2">
                   <p className="text-sm text-gray-500">Endereço</p>
-                  <p className="font-medium">{selectedUser.address || 'Não informado'}</p>
+                  <p className="font-medium">
+                    {selectedUser.address || 'Não informado'}
+                  </p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Bairro</p>
-                  <p className="font-medium">{selectedUser.neighborhood || 'Não informado'}</p>
+                  <p className="font-medium">
+                    {selectedUser.neighborhood || 'Não informado'}
+                  </p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Última atualização</p>
-                  <p className="font-medium">{formatDate(selectedUser.updated_at)}</p>
+                  <p className="font-medium">
+                    {formatDate(selectedUser.updated_at)}
+                  </p>
                 </div>
               </div>
 
@@ -486,13 +598,17 @@ export default function AdminUsersPage() {
               <div className="grid grid-cols-3 gap-4 pt-4 border-t border-gray-200">
                 <div className="text-center p-4 bg-[#f8f6f4] rounded-xl">
                   <ShoppingBag className="w-6 h-6 mx-auto text-[#2d6a4f]" />
-                  <p className="text-2xl font-bold text-gray-800">{selectedUser.order_count || 0}</p>
+                  <p className="text-2xl font-bold text-gray-800">
+                    {selectedUser.order_count || 0}
+                  </p>
                   <p className="text-xs text-gray-500">Pedidos</p>
                 </div>
                 <div className="text-center p-4 bg-[#f8f6f4] rounded-xl">
                   <DollarSign className="w-6 h-6 mx-auto text-[#2d6a4f]" />
                   <p className="text-2xl font-bold text-[#2d6a4f]">
-                    {selectedUser.total_spent ? formatCurrency(selectedUser.total_spent) : '-'}
+                    {selectedUser.total_spent
+                      ? formatCurrency(selectedUser.total_spent)
+                      : '-'}
                   </p>
                   <p className="text-xs text-gray-500">Total Gasto</p>
                 </div>
@@ -508,7 +624,6 @@ export default function AdminUsersPage() {
                 <button
                   onClick={() => {
                     setShowDetailModal(false);
-                    // Aqui poderia abrir o modal de edição
                     alert('Funcionalidade em desenvolvimento');
                   }}
                   className="flex-1 py-3 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition font-medium flex items-center justify-center gap-2"
@@ -519,7 +634,10 @@ export default function AdminUsersPage() {
                 <button
                   onClick={() => {
                     setShowDetailModal(false);
-                    toggleUserStatus(selectedUser.id, selectedUser.status || 'active');
+                    toggleUserStatus(
+                      selectedUser.id,
+                      selectedUser.status || 'active'
+                    );
                   }}
                   className="flex-1 py-3 bg-orange-50 text-orange-600 rounded-xl hover:bg-orange-100 transition font-medium flex items-center justify-center gap-2"
                 >

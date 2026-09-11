@@ -11,8 +11,8 @@ export function calculateDeliveryFee(clientLat: number, clientLng: number) {
     clientLng
   );
 
-  // Taxa: 100 Kz por km + taxa base
-  const baseFee = 500;
-  const perKmFee = 100;
+  // Taxa: 400 Kz por km (ex: 20km = 8.000 Kz) + taxa base opcional
+  const baseFee = 0;
+  const perKmFee = 400;
   return Math.round(baseFee + (distance * perKmFee));
 }

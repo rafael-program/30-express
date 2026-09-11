@@ -494,10 +494,15 @@ export default function OrderConfirmationPage() {
 
               {/* Botão de Ajuda */}
               <div className="mt-6 pt-4 border-t border-gray-200">
-                <button className="w-full py-3 bg-[#f4a261] text-white rounded-2xl hover:bg-[#e8954a] transition font-medium flex items-center justify-center gap-2 shadow-md hover:shadow-lg">
+                <a
+                  href={`https://wa.me/244936953381?text=Ol%C3%A1,%20gostaria%20de%20suporte%20sobre%20o%20pedido%20${order.order_number}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-3 bg-[#f4a261] text-white rounded-2xl hover:bg-[#e8954a] transition font-medium flex items-center justify-center gap-2 shadow-md hover:shadow-lg text-center"
+                >
                   <MessageCircle className="w-4 h-4" />
-                  Falar com Suporte
-                </button>
+                  Falar com Suporte no WhatsApp
+                </a>
               </div>
             </div>
           </div>
@@ -506,7 +511,7 @@ export default function OrderConfirmationPage() {
         {/* Footer */}
         <div className="mt-8 text-center text-sm text-gray-400">
           <p>© 2026 30 Express - Alimentos Saudáveis & Naturais</p>
-          <p className="mt-1">Em caso de dúvidas, entre em contato pelo WhatsApp: +244 923 456 789</p>
+          <p className="mt-1">Em caso de dúvidas, entre em contato pelo WhatsApp: +244 936 953 381</p>
         </div>
       </div>
     </div>

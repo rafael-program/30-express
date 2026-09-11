@@ -69,12 +69,12 @@ export default function AdminSettingsPage() {
   const [settings, setSettings] = useState<SettingsData>({
     id: '',
     store_name: '30 Express',
-    store_phone: '+244 923 456 789',
+    store_phone: '+244 936 953 381',
     store_email: 'contato@30express.com',
     store_address: 'Mercado 30, Luanda, Angola',
-    store_whatsapp: '+244 923 456 789',
-    delivery_base_fee: 200,
-    delivery_fee_per_km: 50,
+    store_whatsapp: '+244 936 953 381',
+    delivery_base_fee: 0,
+    delivery_fee_per_km: 400,
     delivery_max_distance: 20,
     delivery_estimated_time: 60,
     currency: 'AOA',
@@ -120,12 +120,12 @@ export default function AdminSettingsPage() {
     try {
       const defaultSettings = {
         store_name: '30 Express',
-        store_phone: '+244 923 456 789',
+        store_phone: '+244 936 953 381',
         store_email: 'contato@30express.com',
         store_address: 'Mercado 30, Luanda, Angola',
-        store_whatsapp: '+244 923 456 789',
-        delivery_base_fee: 200,
-        delivery_fee_per_km: 50,
+        store_whatsapp: '+244 936 953 381',
+        delivery_base_fee: 0,
+        delivery_fee_per_km: 400,
         delivery_max_distance: 20,
         delivery_estimated_time: 60,
         currency: 'AOA',
@@ -417,7 +417,7 @@ export default function AdminSettingsPage() {
               </div>
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-700">
                 <p className="font-medium">📌 Como funciona o cálculo:</p>
-                <p className="mt-1">Taxa total = Taxa Base + (Distância × Taxa por Km)</p>
+                <p className="mt-1">Taxa total = Taxa Base + (Distância × Taxa por Km) — Ex: 20 km × 400 Kz = 8.000 Kz</p>
                 <p className="mt-1 text-xs opacity-75">Distância máxima: {settings.delivery_max_distance} km</p>
               </div>
             </div>

@@ -246,13 +246,13 @@ export default function HomePage() {
           </div>
           <div className="flex items-center gap-4 text-white/90">
             <a 
-              href="https://wa.me/244923456789" 
+              href="https://wa.me/244936953381" 
               target="_blank" 
               rel="noopener noreferrer" 
               className="flex items-center gap-1.5 hover:text-[#f4a261] transition font-medium"
             >
               <MessageCircle className="w-3.5 h-3.5 text-[#52b788]" />
-              WhatsApp: +244 923 456 789
+              WhatsApp: +244 936 953 381
             </a>
             <span className="text-white/40">|</span>
             <span className="text-[#a7c957] font-semibold">100% Fresco Garantido</span>
@@ -490,7 +490,7 @@ export default function HomePage() {
                   Ver Produtos Frescos
                 </a>
                 <a 
-                  href="https://wa.me/244923456789?text=Ol%C3%A1,%20gostaria%20de%20fazer%20um%20pedido%20no%2030%20Express" 
+                  href="https://wa.me/244936953381?text=Ol%C3%A1,%20gostaria%20de%20fazer%20um%20pedido%20no%2030%20Express" 
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="px-6 py-3.5 bg-white/10 hover:bg-white/20 text-white rounded-full font-semibold border border-white/30 backdrop-blur-md transition-all duration-200 flex items-center gap-2 text-sm sm:text-base hover:border-white"
@@ -805,7 +805,7 @@ export default function HomePage() {
             </div>
             <div className="flex-shrink-0">
               <a 
-                href="https://wa.me/244923456789?text=Ol%C3%A1,%20gostaria%20de%20fazer%20uma%20encomenda%20personalizada%20no%20Mercado%2030" 
+                href="https://wa.me/244936953381?text=Ol%C3%A1,%20gostaria%20de%20fazer%20uma%20encomenda%20personalizada%20no%20Mercado%2030" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="px-8 py-4 bg-[#f4a261] hover:bg-[#e76f51] text-white font-bold rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200 flex items-center gap-2 text-base"
@@ -861,7 +861,7 @@ export default function HomePage() {
               <ul className="space-y-2.5 text-sm text-gray-400">
                 <li className="flex items-center gap-2">
                   <Phone className="w-4 h-4 text-[#f4a261]" />
-                  <span>+244 923 456 789</span>
+                  <span>+244 936 953 381</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <Mail className="w-4 h-4 text-[#f4a261]" />

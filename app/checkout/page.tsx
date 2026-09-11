@@ -48,6 +48,8 @@ export default function CheckoutPage() {
   const [address, setAddress] = useState('');
   const [phone, setPhone] = useState('');
   const [customerName, setCustomerName] = useState('');
+  const [feePerKm, setFeePerKm] = useState(400);
+  const [baseFee, setBaseFee] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   const MARKET_LOCATION = { lat: -8.838, lng: 13.285 };
@@ -84,6 +86,28 @@ export default function CheckoutPage() {
           router.push('/');
         }
 
+        let feePerKmVal = 400;
+        let baseFeeVal = 0;
+        try {
+          const { data: settingsData } = await supabase
+            .from('settings')
+            .select('delivery_base_fee, delivery_fee_per_km')
+            .single();
+          
+          if (settingsData) {
+            if (typeof settingsData.delivery_fee_per_km === 'number' && settingsData.delivery_fee_per_km > 0) {
+              feePerKmVal = settingsData.delivery_fee_per_km;
+              setFeePerKm(settingsData.delivery_fee_per_km);
+            }
+            if (typeof settingsData.delivery_base_fee === 'number') {
+              baseFeeVal = settingsData.delivery_base_fee;
+              setBaseFee(settingsData.delivery_base_fee);
+            }
+          }
+        } catch (settingsErr) {
+          console.error('Erro ao buscar configurações de taxa:', settingsErr);
+        }
+
         if (navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(
             (position) => {
@@ -92,12 +116,12 @@ export default function CheckoutPage() {
                 lng: position.coords.longitude,
               };
               setCustomerLocation(location);
-              calculateDeliveryFee(location);
+              calculateDeliveryFee(location, feePerKmVal, baseFeeVal);
             },
             () => {
               const defaultLocation = { lat: -8.839, lng: 13.289 };
               setCustomerLocation(defaultLocation);
-              calculateDeliveryFee(defaultLocation);
+              calculateDeliveryFee(defaultLocation, feePerKmVal, baseFeeVal);
             }
           );
         }
@@ -112,7 +136,11 @@ export default function CheckoutPage() {
     fetchData();
   }, [router]);
 
-  const calculateDeliveryFee = (location: { lat: number; lng: number }) => {
+  const calculateDeliveryFee = (
+    location: { lat: number; lng: number },
+    currentFeePerKm = feePerKm,
+    currentBaseFee = baseFee
+  ) => {
     const R = 6371;
     const dLat = (location.lat - MARKET_LOCATION.lat) * Math.PI / 180;
     const dLng = (location.lng - MARKET_LOCATION.lng) * Math.PI / 180;
@@ -125,9 +153,8 @@ export default function CheckoutPage() {
     
     setDistance(Math.round(distanceKm * 10) / 10);
     
-    const baseFee = 200;
-    const feePerKm = 50;
-    const fee = baseFee + (distanceKm * feePerKm);
+    // Taxa: 400 Kz por km (ex: 20km = 8.000 Kz)
+    const fee = currentBaseFee + (distanceKm * currentFeePerKm);
     setDeliveryFee(Math.round(fee));
   };
 
@@ -302,7 +329,7 @@ export default function CheckoutPage() {
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-                    placeholder="+244 923 456 789"
+                    placeholder="+244 936 953 381"
                   />
                 </div>
               </div>
@@ -343,7 +370,7 @@ export default function CheckoutPage() {
                   </div>
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     <Truck className="w-4 h-4 text-[#2d6a4f]" />
-                    <span>🚚 Taxa de entrega: {deliveryFee.toLocaleString('pt-AO', { style: 'currency', currency: 'AOA' })}</span>
+                    <span>🚚 Taxa de entrega: {deliveryFee.toLocaleString('pt-AO', { style: 'currency', currency: 'AOA' })} ({feePerKm} Kz/km)</span>
                   </div>
                 </div>
               ) : (

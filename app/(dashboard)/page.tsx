@@ -828,7 +828,7 @@ function ProfileTab({ profile, user, setProfile, showProfileEdit, setShowProfile
                 value={formData.phone}
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                 className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-                placeholder="+244 923 456 789"
+                placeholder="+244 936 953 381"
               />
             </div>
             <div>

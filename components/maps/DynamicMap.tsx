@@ -19,4 +19,4 @@ const MapWithNoSSR = dynamic(
   }
 );
 
-export default function DynamicMap;
+export default MapWithNoSSR;

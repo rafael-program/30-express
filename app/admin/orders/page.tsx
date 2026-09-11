@@ -2,344 +2,347 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase/client';
 import Link from 'next/link';
+import { supabase } from '@/lib/supabase/client';
 import {
+  ShoppingBag,
   Search,
-  Filter,
   Eye,
-  Printer,
+  X,
   ChevronLeft,
   ChevronRight,
-  Package,
   Truck,
-  CheckCircle,
-  XCircle,
-  AlertCircle,
-  Clock,
-  Download,
-  FileText,
-  UserCheck,
-  UserPlus,
-  X
+  User,
+  MapPin,
+  Phone,
 } from 'lucide-react';
-import { PrintOrder } from '@/components/PrintOrder';
+
+// ============================================================
+// TIPOS
+// ============================================================
+type OrderStatus =
+  | 'pending'
+  | 'confirmed'
+  | 'preparing'
+  | 'ready'
+  | 'in_transit'
+  | 'delivered'
+  | 'cancelled';
 
 type Order = {
   id: string;
-  order_number: string;
+  client_id: string;
+  customer_id: string | null;
   customer_name: string;
   customer_phone: string;
-  customer_address: string;
-  delivery_address: string;
-  total_amount: number;
-  delivery_fee: number;
+  status: OrderStatus;
   subtotal: number;
-  status: string;
+  delivery_fee: number;
+  total_amount: number;
   payment_method: string;
+  delivery_address: string;
+  delivery_lat: number | null;
+  delivery_lng: number | null;
+  customer_lat: number | null;
+  customer_lng: number | null;
+  scheduled_time: string | null;
+  delivery_time: string | null;
+  delivery_agent_id: string | null;
+  qr_code: string | null;
+  tracking_history: unknown;
   created_at: string;
-  updated_at?: string;
-  delivery_time: string;
-  qr_code: string;
-  items: OrderItem[];
-  items_count?: number;
-  delivery_agent_id?: string;
-  delivery_agent?: {
-    id: string;
-    full_name: string;
-    phone: string;
-  } | null;
-};
-
-type OrderItem = {
-  id: string;
-  product_name: string;
-  quantity: number;
-  unit_price: number;
-  total_price: number;
+  updated_at: string;
+  delivery_agent_name?: string;
 };
 
 type DeliveryAgent = {
   id: string;
-  full_name: string;
+  user_id: string;
+  name: string;
   phone: string;
-  vehicle: string;
-  is_available: boolean;
+  vehicle_type: string | null;
+  status: string;
 };
 
+// ============================================================
+// CONFIGURAÇÃO DE STATUS
+// ============================================================
+const STATUS_CONFIG: Record<
+  OrderStatus,
+  { label: string; color: string; step: number }
+> = {
+  pending: {
+    label: 'Pendente',
+    color: 'bg-yellow-100 text-yellow-700',
+    step: 1,
+  },
+  confirmed: {
+    label: 'Confirmado',
+    color: 'bg-blue-100 text-blue-700',
+    step: 2,
+  },
+  preparing: {
+    label: 'Em Preparação',
+    color: 'bg-orange-100 text-orange-700',
+    step: 3,
+  },
+  ready: {
+    label: 'Pronto',
+    color: 'bg-purple-100 text-purple-700',
+    step: 4,
+  },
+  in_transit: {
+    label: 'Em Trânsito',
+    color: 'bg-indigo-100 text-indigo-700',
+    step: 5,
+  },
+  delivered: {
+    label: 'Entregue',
+    color: 'bg-green-100 text-green-700',
+    step: 6,
+  },
+  cancelled: {
+    label: 'Cancelado',
+    color: 'bg-red-100 text-red-700',
+    step: 0,
+  },
+};
+
+// ============================================================
+// COMPONENTE
+// ============================================================
 export default function AdminOrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
+  const [deliveryAgents, setDeliveryAgents] = useState<DeliveryAgent[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-  const [showOrderDetail, setShowOrderDetail] = useState(false);
-  
-  const [showAssignModal, setShowAssignModal] = useState(false);
-  const [assignOrderId, setAssignOrderId] = useState<string | null>(null);
-  const [deliveryAgents, setDeliveryAgents] = useState<DeliveryAgent[]>([]);
+  const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedAgentId, setSelectedAgentId] = useState('');
-  const [assigning, setAssigning] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const ITEMS_PER_PAGE = 10;
 
+  // ============================================================
+  // BUSCAR ENTREGADORES (uma vez)
+  // ============================================================
   useEffect(() => {
-    fetchOrders();
-    fetchDeliveryAgents();
-  }, [currentPage, statusFilter, searchTerm]);
+    let cancelled = false;
 
-  const fetchOrders = async () => {
-    setLoading(true);
-    try {
-      let query = supabase
-        .from('orders')
-        .select(`
-          *,
-          items:order_items(*)
-        `, { count: 'exact' });
+    const fetchDeliveryAgents = async () => {
+      try {
+        const { data } = await supabase
+          .from('delivery_agents')
+          .select('*')
+          .eq('status', 'available');
 
-      if (statusFilter !== 'all') {
-        query = query.eq('status', statusFilter);
-      }
-
-      if (searchTerm) {
-        query = query.or(`customer_name.ilike.%${searchTerm}%,customer_phone.ilike.%${searchTerm}%,id.ilike.%${searchTerm}%`);
-      }
-
-      const from = (currentPage - 1) * ITEMS_PER_PAGE;
-      const to = from + ITEMS_PER_PAGE - 1;
-      query = query.range(from, to).order('created_at', { ascending: false });
-
-      const { data, error, count } = await query;
-
-      if (error) throw error;
-
-      const mappedOrders = data?.map((order: any) => {
-        const shortId = order.id?.slice(0, 6) || '000000';
-        const timestamp = new Date(order.created_at).getTime().toString().slice(-4);
-        const orderNumber = order.order_number || `ORD-${timestamp}-${shortId}`;
-        
-        return {
-          ...order,
-          customer_address: order.delivery_address || order.customer_address || 'Endereço não informado',
-          delivery_time: order.delivery_time || order.scheduled_time || new Date().toISOString(),
-          qr_code: order.qr_code || 'QR-' + order.id?.slice(0, 8),
-          order_number: orderNumber,
-          delivery_agent: null
-        };
-      }) || [];
-
-      setOrders(mappedOrders);
-      setTotalPages(Math.ceil((count || 0) / ITEMS_PER_PAGE));
-    } catch (error) {
-      console.error('Erro ao buscar pedidos:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchDeliveryAgents = async () => {
-    try {
-      const { data } = await supabase
-        .from('delivery_agents')
-        .select('id, full_name, phone, vehicle, is_available')
-        .eq('status', 'active');
-      
-      setDeliveryAgents(data || []);
-    } catch (error) {
-      console.error('Erro ao buscar entregadores:', error);
-    }
-  };
-
-  // 🔥 Função para atribuir entregador com os status corretos
-  const assignDeliveryAgent = async () => {
-    if (!assignOrderId || !selectedAgentId) {
-      alert('Selecione um entregador');
-      return;
-    }
-
-    setAssigning(true);
-    try {
-      // 🔥 USAR OS STATUS CORRETOS DA TABELA
-      // A tabela tem: pending, processing, delivering, delivered, cancelled
-      
-      // Atualizar pedido para 'delivering' (em rota)
-      const { error: orderError } = await supabase
-        .from('orders')
-        .update({
-          delivery_agent_id: selectedAgentId,
-          status: 'delivering',  // ← 'delivering' em vez de 'out_for_delivery'
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', assignOrderId);
-
-      if (orderError) {
-        console.error('❌ Erro ao atualizar pedido:', orderError);
-        
-        // Tentar com 'processing' como fallback
-        if (orderError.message.includes('check constraint')) {
-          console.log('🔄 Tentando com status "processing"...');
-          const { error: retryError } = await supabase
-            .from('orders')
-            .update({
-              delivery_agent_id: selectedAgentId,
-              status: 'processing',
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', assignOrderId);
-          
-          if (retryError) throw retryError;
-        } else {
-          throw orderError;
+        if (!cancelled && data) {
+          setDeliveryAgents(data);
         }
+      } catch (error) {
+        console.error('Erro ao buscar entregadores:', error);
       }
+    };
 
-      // Atualizar entregador
-      const { error: agentError } = await supabase
-        .from('delivery_agents')
-        .update({
-          active_order_id: assignOrderId,
-          is_available: false,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', selectedAgentId);
+    fetchDeliveryAgents();
 
-      if (agentError) throw agentError;
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-      // Adicionar log
-      const agentName = deliveryAgents.find(a => a.id === selectedAgentId)?.full_name || 'Entregador';
-      await supabase.from('order_logs').insert({
-        order_id: assignOrderId,
-        status: 'delivering',
-        description: `Entregador atribuído: ${agentName}`
-      });
+  // ============================================================
+  // BUSCAR PEDIDOS
+  // ============================================================
+  useEffect(() => {
+    let cancelled = false;
 
-      alert('✅ Entregador atribuído com sucesso!');
-      setShowAssignModal(false);
-      setSelectedAgentId('');
-      setAssignOrderId(null);
-      fetchOrders();
-      fetchDeliveryAgents();
+    const fetchOrders = async () => {
+      setLoading(true);
+      try {
+        let query = supabase
+          .from('orders')
+          .select('*', { count: 'exact' });
 
-    } catch (error) {
-      console.error('Erro ao atribuir entregador:', error);
-      alert('❌ Erro ao atribuir entregador');
-    } finally {
-      setAssigning(false);
-    }
-  };
+        if (statusFilter !== 'all') {
+          query = query.eq('status', statusFilter);
+        }
 
-  const updateOrderStatus = async (orderId: string, newStatus: string) => {
+        if (searchTerm) {
+          query = query.or(
+            `customer_name.ilike.%${searchTerm}%,customer_phone.ilike.%${searchTerm}%,delivery_address.ilike.%${searchTerm}%`
+          );
+        }
+
+        const from = (currentPage - 1) * ITEMS_PER_PAGE;
+        const to = from + ITEMS_PER_PAGE - 1;
+
+        const { data, error, count } = await query
+          .range(from, to)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        // Buscar nomes dos entregadores atribuídos
+        const agentIds = (data || [])
+          .map((o) => o.delivery_agent_id)
+          .filter(Boolean);
+
+        // ✅ const em vez de let
+        const agentsMap: Record<string, string> = {};
+        if (agentIds.length > 0) {
+          const { data: agentsData } = await supabase
+            .from('delivery_agents')
+            .select('id, name')
+            .in('id', agentIds);
+
+          agentsData?.forEach((a) => {
+            agentsMap[a.id] = a.name;
+          });
+        }
+
+        const enrichedOrders: Order[] = (data || []).map((o) => ({
+          ...o,
+          delivery_agent_name: o.delivery_agent_id
+            ? agentsMap[o.delivery_agent_id]
+            : undefined,
+        }));
+
+        if (!cancelled) {
+          setOrders(enrichedOrders);
+          setTotalPages(Math.ceil((count || 0) / ITEMS_PER_PAGE));
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error('Erro ao buscar pedidos:', error);
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    fetchOrders();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentPage, statusFilter, searchTerm, refreshKey]);
+
+  // ============================================================
+  // ATRIBUIR ENTREGADOR
+  // ============================================================
+  const assignDeliveryAgent = async () => {
+    if (!selectedOrder || !selectedAgentId) return;
+
     try {
       const { error } = await supabase
         .from('orders')
-        .update({ 
+        .update({
+          delivery_agent_id: selectedAgentId,
+          status: 'in_transit',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', selectedOrder.id);
+
+      if (error) throw error;
+
+      setRefreshKey((prev) => prev + 1);
+      setShowDetailModal(false);
+      setSelectedAgentId('');
+      alert('✅ Entregador atribuído com sucesso!');
+    } catch (error) {
+      console.error('Erro ao atribuir entregador:', error);
+      alert('❌ Erro ao atribuir entregador');
+    }
+  };
+
+  // ============================================================
+  // MUDAR STATUS DO PEDIDO
+  // ============================================================
+  const updateOrderStatus = async (
+    orderId: string,
+    newStatus: OrderStatus
+  ) => {
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({
           status: newStatus,
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
         })
         .eq('id', orderId);
 
       if (error) throw error;
 
-      setOrders(prev => 
-        prev.map(order => 
-          order.id === orderId ? { ...order, status: newStatus } : order
-        )
-      );
-
-      await supabase.from('order_logs').insert({
-        order_id: orderId,
-        status: newStatus,
-        description: `Status atualizado para ${getStatusLabel(newStatus)}`
-      });
-
+      setRefreshKey((prev) => prev + 1);
+      alert(`✅ Status atualizado para ${STATUS_CONFIG[newStatus].label}!`);
     } catch (error) {
       console.error('Erro ao atualizar status:', error);
-      alert('Erro ao atualizar status. Tente novamente.');
+      alert('❌ Erro ao atualizar status');
     }
   };
 
-  // 🔥 Funções de status atualizadas para os valores da tabela
-  const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      pending: 'bg-yellow-100 text-yellow-700',
-      processing: 'bg-indigo-100 text-indigo-700',
-      delivering: 'bg-orange-100 text-orange-700',
-      delivered: 'bg-green-100 text-green-700',
-      cancelled: 'bg-red-100 text-red-700'
-    };
-    return colors[status] || 'bg-gray-100 text-gray-700';
-  };
-
-  const getStatusLabel = (status: string) => {
-    const labels: Record<string, string> = {
-      pending: 'Pendente',
-      processing: 'Preparando',
-      delivering: 'Em Rota',
-      delivered: 'Entregue',
-      cancelled: 'Cancelado'
-    };
-    return labels[status] || status;
-  };
-
-  const getStatusIcon = (status: string) => {
-    const icons: Record<string, any> = {
-      pending: AlertCircle,
-      processing: Package,
-      delivering: Truck,
-      delivered: CheckCircle,
-      cancelled: XCircle
-    };
-    return icons[status] || AlertCircle;
-  };
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('pt-AO', {
-      style: 'currency',
-      currency: 'AOA',
-      minimumFractionDigits: 0
-    }).format(value);
-  };
-
+  // ============================================================
+  // FORMATADORES
+  // ============================================================
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('pt-AO', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     });
   };
 
-  if (loading) {
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('pt-AO', {
+      style: 'currency',
+      currency: 'AOA',
+      minimumFractionDigits: 0,
+    }).format(value);
+  };
+
+  const formatOrderNumber = (id: string) => {
+    return `#${id.slice(0, 8).toUpperCase()}`;
+  };
+
+  const getStatusBadge = (status: OrderStatus) => {
+    return STATUS_CONFIG[status] || STATUS_CONFIG.pending;
+  };
+
+  // ============================================================
+  // LOADING
+  // ============================================================
+  if (loading && orders.length === 0) {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-[#2d6a4f] mx-auto"></div>
-          <p className="mt-4 text-[#2d6a4f] font-medium">Carregando pedidos...</p>
+          <p className="mt-4 text-[#2d6a4f] font-medium">
+            Carregando pedidos...
+          </p>
         </div>
       </div>
     );
   }
 
+  // ============================================================
+  // RENDER
+  // ============================================================
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-[#2d6a4f]">Pedidos</h1>
-          <p className="text-gray-500 mt-1">Gerencie todos os pedidos</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button className="px-4 py-2 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition flex items-center gap-2">
-            <Download className="w-4 h-4" />
-            Exportar
-          </button>
-          <button className="px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition flex items-center gap-2">
-            <FileText className="w-4 h-4" />
-            Relatório
-          </button>
+          <h1 className="text-3xl font-bold text-[#2d6a4f] flex items-center gap-2">
+            <ShoppingBag className="w-8 h-8" />
+            Pedidos
+          </h1>
+          <p className="text-gray-500 mt-1">
+            Gerencie todos os pedidos da plataforma
+          </p>
         </div>
       </div>
 
@@ -350,129 +353,132 @@ export default function AdminOrdersPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Buscar por cliente, telefone ou ID..."
+              placeholder="Buscar por cliente, telefone ou endereço..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setCurrentPage(1);
+              }}
               className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
             />
           </div>
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setCurrentPage(1);
+            }}
             className="px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
           >
             <option value="all">Todos os Status</option>
-            <option value="pending">Pendentes</option>
-            <option value="processing">Preparando</option>
-            <option value="delivering">Em Rota</option>
-            <option value="delivered">Entregues</option>
-            <option value="cancelled">Cancelados</option>
+            <option value="pending">Pendente</option>
+            <option value="confirmed">Confirmado</option>
+            <option value="preparing">Em Preparação</option>
+            <option value="ready">Pronto</option>
+            <option value="in_transit">Em Trânsito</option>
+            <option value="delivered">Entregue</option>
+            <option value="cancelled">Cancelado</option>
           </select>
-          <button
-            onClick={fetchOrders}
-            className="px-6 py-2 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition flex items-center gap-2"
-          >
-            <Filter className="w-4 h-4" />
-            Filtrar
-          </button>
         </div>
       </div>
 
-      {/* Lista de Pedidos */}
+      {/* Tabela de Pedidos */}
       <div className="bg-white rounded-3xl shadow-lg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-[#f8f6f4]">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pedido</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cliente</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entregador</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Pedido
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Cliente
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Endereço
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Total
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Entregador
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Ações
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {orders.map((order) => {
-                const StatusIcon = getStatusIcon(order.status);
+                const statusBadge = getStatusBadge(order.status);
                 return (
-                  <tr key={order.id} className="hover:bg-gray-50 transition">
+                  <tr
+                    key={order.id}
+                    className="hover:bg-gray-50 transition"
+                  >
                     <td className="px-4 py-3">
-                      <span className="font-medium text-gray-800">#{order.order_number}</span>
+                      <div>
+                        <p className="font-medium text-gray-800">
+                          {formatOrderNumber(order.id)}
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          {formatDate(order.created_at)}
+                        </p>
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <div>
-                        <p className="font-medium text-gray-800">{order.customer_name || 'Cliente'}</p>
-                        <p className="text-sm text-gray-500">{order.customer_phone || '-'}</p>
+                        <p className="font-medium text-gray-800">
+                          {order.customer_name || 'Cliente'}
+                        </p>
+                        <p className="text-xs text-gray-500 flex items-center gap-1">
+                          <Phone className="w-3 h-3" />
+                          {order.customer_phone || '-'}
+                        </p>
                       </div>
                     </td>
-                    <td className="px-4 py-3 font-bold text-[#2d6a4f]">
-                      {formatCurrency(order.total_amount)}
+                    <td className="px-4 py-3">
+                      <p className="text-sm text-gray-600 line-clamp-2 max-w-xs">
+                        {order.delivery_address}
+                      </p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="font-bold text-[#2d6a4f]">
+                        {formatCurrency(order.total_amount)}
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        Taxa: {formatCurrency(order.delivery_fee)}
+                      </p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`px-3 py-1 rounded-full text-xs font-medium ${statusBadge.color}`}
+                      >
+                        {statusBadge.label}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600">
+                      {order.delivery_agent_name || (
+                        <span className="text-gray-400 italic">
+                          Não atribuído
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
-                          {getStatusLabel(order.status)}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      {order.delivery_agent_id ? (
-                        <span className="text-sm text-green-600 flex items-center gap-1">
-                          <UserCheck className="w-3 h-3" />
-                          Entregador atribuído
-                        </span>
-                      ) : (
-                        <span className="text-xs text-gray-400">Não atribuído</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-500">
-                      {formatDate(order.created_at)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1 flex-wrap">
-                        <Link
-                          href={`/admin/orders/${order.id}`}
-                          className="p-1.5 hover:bg-gray-100 rounded-lg transition"
+                        <button
+                          onClick={() => {
+                            setSelectedOrder(order);
+                            setShowDetailModal(true);
+                          }}
+                          className="p-2 hover:bg-gray-100 rounded-lg transition"
                           title="Ver detalhes"
                         >
-                          <Eye className="w-4 h-4 text-gray-400 hover:text-gray-600" />
-                        </Link>
-                        <PrintOrder 
-                          order={order} 
-                          buttonText=""
-                          buttonVariant="outline"
-                          className="!px-1.5 !py-1 text-xs"
-                        />
-                        
-                        {/* 🔥 Botão Atribuir Entregador */}
-                        {!order.delivery_agent_id && order.status !== 'delivered' && order.status !== 'cancelled' && (
-                          <button
-                            onClick={() => {
-                              setAssignOrderId(order.id);
-                              setShowAssignModal(true);
-                              setSelectedAgentId('');
-                            }}
-                            className="p-1.5 hover:bg-blue-50 rounded-lg transition text-blue-500"
-                            title="Atribuir entregador"
-                          >
-                            <UserPlus className="w-4 h-4" />
-                          </button>
-                        )}
-                        
-                        <select
-                          value={order.status}
-                          onChange={(e) => updateOrderStatus(order.id, e.target.value)}
-                          className="text-xs border border-gray-200 rounded-lg px-1.5 py-1 focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-                          disabled={order.status === 'delivered' || order.status === 'cancelled'}
-                        >
-                          <option value="pending">Pendente</option>
-                          <option value="processing">Preparando</option>
-                          <option value="delivering">Em Rota</option>
-                          <option value="delivered">Entregue</option>
-                          <option value="cancelled">Cancelar</option>
-                        </select>
+                          <Eye className="w-4 h-4 text-gray-400 hover:text-[#2d6a4f]" />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -482,9 +488,9 @@ export default function AdminOrdersPage() {
           </table>
         </div>
 
-        {orders.length === 0 && (
+        {orders.length === 0 && !loading && (
           <div className="text-center py-12">
-            <div className="text-6xl mb-4">📦</div>
+            <div className="text-6xl mb-4">🛒</div>
             <p className="text-gray-500">Nenhum pedido encontrado</p>
           </div>
         )}
@@ -497,14 +503,18 @@ export default function AdminOrdersPage() {
             </div>
             <div className="flex gap-2">
               <button
-                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                onClick={() =>
+                  setCurrentPage((prev) => Math.max(1, prev - 1))
+                }
                 disabled={currentPage === 1}
                 className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition disabled:opacity-50"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
               <button
-                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                onClick={() =>
+                  setCurrentPage((prev) => Math.min(totalPages, prev + 1))
+                }
                 disabled={currentPage === totalPages}
                 className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition disabled:opacity-50"
               >
@@ -515,188 +525,190 @@ export default function AdminOrdersPage() {
         )}
       </div>
 
-      {/* 🔥 MODAL ATRIBUIR ENTREGADOR */}
-      {showAssignModal && (
+      {/* Modal de Detalhes do Pedido */}
+      {showDetailModal && selectedOrder && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-[#2d6a4f] flex items-center gap-2">
-                <Truck className="w-5 h-5" />
-                Atribuir Entregador
+          <div className="bg-white rounded-3xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-[#2d6a4f] flex items-center gap-2">
+                <ShoppingBag className="w-6 h-6" />
+                Pedido {formatOrderNumber(selectedOrder.id)}
               </h2>
               <button
-                onClick={() => {
-                  setShowAssignModal(false);
-                  setSelectedAgentId('');
-                  setAssignOrderId(null);
-                }}
+                onClick={() => setShowDetailModal(false)}
                 className="p-2 hover:bg-gray-100 rounded-full transition"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <p className="text-sm text-gray-500 mb-4">
-              Selecione um entregador disponível para este pedido.
-            </p>
-
-            <div className="space-y-3">
-              <select
-                value={selectedAgentId}
-                onChange={(e) => setSelectedAgentId(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-              >
-                <option value="">Selecione um entregador...</option>
-                {deliveryAgents.filter(a => a.is_available).map((agent) => (
-                  <option key={agent.id} value={agent.id}>
-                    {agent.full_name} - {agent.vehicle} ({agent.phone})
-                  </option>
-                ))}
-              </select>
-
-              {deliveryAgents.filter(a => a.is_available).length === 0 && (
-                <div className="p-4 bg-yellow-50 rounded-xl text-yellow-700 text-sm">
-                  ⚠️ Nenhum entregador disponível no momento.
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-3 mt-6 pt-4 border-t border-gray-200">
-              <button
-                onClick={assignDeliveryAgent}
-                disabled={!selectedAgentId || assigning}
-                className="flex-1 py-3 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition font-medium flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {assigning ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    Atribuindo...
-                  </>
-                ) : (
-                  <>
-                    <Truck className="w-4 h-4" />
-                    Atribuir
-                  </>
-                )}
-              </button>
-              <button
-                onClick={() => {
-                  setShowAssignModal(false);
-                  setSelectedAgentId('');
-                  setAssignOrderId(null);
-                }}
-                className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition font-medium"
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Detalhes do Pedido */}
-      {showOrderDetail && selectedOrder && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl font-bold text-[#2d6a4f]">
-                Pedido #{selectedOrder.order_number}
-              </h2>
-              <button
-                onClick={() => setShowOrderDetail(false)}
-                className="p-2 hover:bg-gray-100 rounded-full transition"
-              >
-                ✕
-              </button>
-            </div>
-
             <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-500">Cliente</p>
-                  <p className="font-medium">{selectedOrder.customer_name || 'Cliente'}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Telefone</p>
-                  <p className="font-medium">{selectedOrder.customer_phone || '-'}</p>
-                </div>
-                <div className="col-span-2">
-                  <p className="text-sm text-gray-500">Endereço</p>
-                  <p className="font-medium">{selectedOrder.customer_address || selectedOrder.delivery_address || '-'}</p>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="font-semibold text-gray-800 mb-3">Itens</h3>
-                <div className="space-y-2">
-                  {selectedOrder.items?.map((item) => (
-                    <div key={item.id} className="flex justify-between py-2 border-b border-gray-100">
-                      <div>
-                        <p className="font-medium">{item.product_name}</p>
-                        <p className="text-sm text-gray-500">
-                          {item.quantity}x {formatCurrency(item.unit_price)}
-                        </p>
-                      </div>
-                      <span className="font-bold text-[#2d6a4f]">
-                        {formatCurrency(item.total_price)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="border-t border-gray-200 pt-4">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Subtotal</span>
-                  <span>{formatCurrency(selectedOrder.subtotal || 0)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Taxa de Entrega</span>
-                  <span>{formatCurrency(selectedOrder.delivery_fee || 0)}</span>
-                </div>
-                <div className="flex justify-between text-lg font-bold text-[#2d6a4f] mt-2 border-t border-gray-200 pt-2">
-                  <span>Total</span>
-                  <span>{formatCurrency(selectedOrder.total_amount)}</span>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-3">
-                <PrintOrder 
-                  order={selectedOrder} 
-                  buttonText="🖨️ Imprimir (3 Vias)"
-                  buttonVariant="primary"
-                  className="flex-1"
-                />
-                <button
-                  onClick={() => {
-                    alert(`QR Code: ${selectedOrder.qr_code || selectedOrder.id}`);
-                  }}
-                  className="flex-1 py-3 bg-[#a7c957] text-white rounded-xl hover:bg-[#8fb84a] transition font-medium flex items-center justify-center gap-2"
+              {/* Status */}
+              <div className="flex items-center gap-4 p-4 bg-[#f8f6f4] rounded-xl">
+                <span
+                  className={`px-4 py-2 rounded-full text-sm font-medium ${
+                    getStatusBadge(selectedOrder.status).color
+                  }`}
                 >
-                  QR Code
-                </button>
+                  {getStatusBadge(selectedOrder.status).label}
+                </span>
+                <span className="text-sm text-gray-500">
+                  Criado em {formatDate(selectedOrder.created_at)}
+                </span>
               </div>
 
-              <div className="pt-4 border-t border-gray-200">
-                <p className="text-sm text-gray-500 mb-2">Atualizar Status</p>
+              {/* Cliente */}
+              <div>
+                <h3 className="text-sm font-bold text-gray-500 uppercase mb-2">
+                  Cliente
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex items-center gap-2">
+                    <User className="w-4 h-4 text-gray-400" />
+                    <span>{selectedOrder.customer_name || '-'}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Phone className="w-4 h-4 text-gray-400" />
+                    <span>{selectedOrder.customer_phone || '-'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Endereço */}
+              <div>
+                <h3 className="text-sm font-bold text-gray-500 uppercase mb-2">
+                  Endereço de Entrega
+                </h3>
+                <div className="flex items-start gap-2">
+                  <MapPin className="w-4 h-4 text-gray-400 mt-0.5" />
+                  <span>{selectedOrder.delivery_address}</span>
+                </div>
+                {selectedOrder.delivery_lat &&
+                  selectedOrder.delivery_lng && (
+                    <p className="text-xs text-gray-400 mt-1 ml-6">
+                      GPS: {selectedOrder.delivery_lat.toFixed(5)},{' '}
+                      {selectedOrder.delivery_lng.toFixed(5)}
+                    </p>
+                  )}
+              </div>
+
+              {/* Valores */}
+              <div>
+                <h3 className="text-sm font-bold text-gray-500 uppercase mb-2">
+                  Valores
+                </h3>
+                <div className="space-y-1">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Subtotal</span>
+                    <span>{formatCurrency(selectedOrder.subtotal)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Taxa de Entrega</span>
+                    <span>
+                      {formatCurrency(selectedOrder.delivery_fee)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between font-bold text-[#2d6a4f] pt-2 border-t">
+                    <span>Total</span>
+                    <span>
+                      {formatCurrency(selectedOrder.total_amount)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm pt-2">
+                    <span className="text-gray-500">Pagamento</span>
+                    <span className="capitalize">
+                      {selectedOrder.payment_method || 'Não informado'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Atribuir Entregador */}
+              <div>
+                <h3 className="text-sm font-bold text-gray-500 uppercase mb-2">
+                  Entregador
+                </h3>
+                {selectedOrder.delivery_agent_name ? (
+                  <div className="flex items-center gap-2 p-3 bg-green-50 rounded-xl">
+                    <Truck className="w-5 h-5 text-green-600" />
+                    <span className="font-medium text-green-700">
+                      {selectedOrder.delivery_agent_name}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <select
+                      value={selectedAgentId}
+                      onChange={(e) => setSelectedAgentId(e.target.value)}
+                      className="flex-1 px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
+                    >
+                      <option value="">Selecionar entregador...</option>
+                      {deliveryAgents.map((agent) => (
+                        <option key={agent.id} value={agent.id}>
+                          {agent.name} - {agent.vehicle_type || 'N/A'}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={assignDeliveryAgent}
+                      disabled={!selectedAgentId}
+                      className="px-4 py-2 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition disabled:opacity-50"
+                    >
+                      Atribuir
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Mudar Status */}
+              <div>
+                <h3 className="text-sm font-bold text-gray-500 uppercase mb-2">
+                  Alterar Status
+                </h3>
                 <div className="flex flex-wrap gap-2">
-                  {['pending', 'processing', 'delivering', 'delivered', 'cancelled'].map((status) => (
+                  {(
+                    [
+                      'pending',
+                      'confirmed',
+                      'preparing',
+                      'ready',
+                      'in_transit',
+                      'delivered',
+                      'cancelled',
+                    ] as OrderStatus[]
+                  ).map((status) => (
                     <button
                       key={status}
-                      onClick={() => {
-                        updateOrderStatus(selectedOrder.id, status);
-                        setSelectedOrder({ ...selectedOrder, status });
-                      }}
-                      className={`px-4 py-2 rounded-full text-sm font-medium transition ${
+                      onClick={() =>
+                        updateOrderStatus(selectedOrder.id, status)
+                      }
+                      className={`px-3 py-1 rounded-full text-xs font-medium transition ${
                         selectedOrder.status === status
-                          ? 'bg-[#2d6a4f] text-white'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          ? STATUS_CONFIG[status].color
+                          : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                       }`}
                     >
-                      {getStatusLabel(status)}
+                      {STATUS_CONFIG[status].label}
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* Ações */}
+              <div className="flex gap-3 pt-4 border-t">
+                <Link
+                  href={`/order-confirmation?order_id=${selectedOrder.id}`}
+                  className="flex-1 py-3 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition font-medium text-center flex items-center justify-center gap-2"
+                >
+                  <Eye className="w-4 h-4" />
+                  Ver Confirmação
+                </Link>
+                <button
+                  onClick={() => setShowDetailModal(false)}
+                  className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200 transition font-medium"
+                >
+                  Fechar
+                </button>
               </div>
             </div>
           </div>

@@ -4,527 +4,527 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import {
-  Settings,
   Save,
-  X,
-  CheckCircle,
-  AlertCircle,
-  Truck,
-  DollarSign,
-  Clock,
-  MapPin,
-  Mail,
-  Phone,
-  Globe,
-  Shield,
-  Users,
-  Package,
-  CreditCard,
-  Bell,
-  Lock,
-  Eye,
-  EyeOff,
-  Plus,
-  Trash2,
-  Edit,
-  User,
-  Home,
-  Building,
   Store,
-  RefreshCw,
-  Upload,
-  Camera,
-  Loader2
+  Truck,
+  CreditCard,
+  CheckCircle,
+  Settings as SettingsIcon,
 } from 'lucide-react';
 
-type SettingsData = {
+// ============================================================
+// TIPOS
+// ============================================================
+type Settings = {
   id: string;
   store_name: string;
-  store_phone: string;
-  store_email: string;
-  store_address: string;
-  store_whatsapp: string;
+  store_phone: string | null;
+  store_email: string | null;
+  store_address: string | null;
   delivery_base_fee: number;
-  delivery_fee_per_km: number;
-  delivery_max_distance: number;
-  delivery_estimated_time: number;
-  currency: string;
-  timezone: string;
-  maintenance_mode: boolean;
-  allow_guest_checkout: boolean;
-  min_order_value: number;
-  max_order_value: number;
+  delivery_per_km: number;
+  min_order: number;
+  open_hours: string;
+  close_hours: string;
+  accepts_cash: boolean;
+  accepts_card: boolean;
+  accepts_transfer: boolean;
+  whatsapp: string | null;
   created_at: string;
   updated_at: string;
 };
 
+type SettingsForm = Omit<
+  Settings,
+  'id' | 'created_at' | 'updated_at'
+>;
+
+// ============================================================
+// DEFAULTS
+// ============================================================
+const DEFAULT_SETTINGS: SettingsForm = {
+  store_name: 'Mercado do 30',
+  store_phone: '',
+  store_email: '',
+  store_address: '',
+  delivery_base_fee: 500,
+  delivery_per_km: 100,
+  min_order: 1000,
+  open_hours: '08:00',
+  close_hours: '20:00',
+  accepts_cash: true,
+  accepts_card: true,
+  accepts_transfer: false,
+  whatsapp: '',
+};
+
+// ============================================================
+// COMPONENTE
+// ============================================================
 export default function AdminSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [showPassword, setShowPassword] = useState(false);
-  const [activeTab, setActiveTab] = useState('general');
+  const [settingsId, setSettingsId] = useState<string | null>(null);
+  const [formData, setFormData] =
+    useState<SettingsForm>(DEFAULT_SETTINGS);
+  const [activeTab, setActiveTab] = useState<'store' | 'delivery' | 'payment'>(
+    'store'
+  );
 
-  const [settings, setSettings] = useState<SettingsData>({
-    id: '',
-    store_name: '30 Express',
-    store_phone: '+244 936 953 381',
-    store_email: 'contato@30express.com',
-    store_address: 'Mercado 30, Luanda, Angola',
-    store_whatsapp: '+244 936 953 381',
-    delivery_base_fee: 0,
-    delivery_fee_per_km: 400,
-    delivery_max_distance: 20,
-    delivery_estimated_time: 60,
-    currency: 'AOA',
-    timezone: 'Africa/Luanda',
-    maintenance_mode: false,
-    allow_guest_checkout: true,
-    min_order_value: 0,
-    max_order_value: 100000,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  });
-
+  // ============================================================
+  // BUSCAR CONFIGURAÇÕES
+  // ============================================================
   useEffect(() => {
+    let cancelled = false;
+
+    const fetchSettings = async () => {
+      setLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('settings')
+          .select('*')
+          .limit(1)
+          .maybeSingle();
+
+        if (error && error.code !== 'PGRST116') throw error;
+
+        if (data) {
+          if (!cancelled) {
+            setSettingsId(data.id);
+            setFormData({
+              store_name: data.store_name || '',
+              store_phone: data.store_phone || '',
+              store_email: data.store_email || '',
+              store_address: data.store_address || '',
+              delivery_base_fee: data.delivery_base_fee || 500,
+              delivery_per_km: data.delivery_per_km || 100,
+              min_order: data.min_order || 1000,
+              open_hours: data.open_hours || '08:00',
+              close_hours: data.close_hours || '20:00',
+              accepts_cash: data.accepts_cash ?? true,
+              accepts_card: data.accepts_card ?? true,
+              accepts_transfer: data.accepts_transfer ?? false,
+              whatsapp: data.whatsapp || '',
+            });
+          }
+        } else {
+          // Criar settings padrão
+          const { data: created, error: createError } = await supabase
+            .from('settings')
+            .insert([DEFAULT_SETTINGS])
+            .select()
+            .single();
+
+          if (createError) throw createError;
+          if (!cancelled && created) {
+            setSettingsId(created.id);
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao buscar configurações:', error);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
     fetchSettings();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const fetchSettings = async () => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('settings')
-        .select('*')
-        .single();
-
-      if (error && error.code !== 'PGRST116') {
-        throw error;
-      }
-
-      if (data) {
-        setSettings(data);
-      } else {
-        // Criar configurações padrão
-        await createDefaultSettings();
-      }
-    } catch (error) {
-      console.error('Erro ao buscar configurações:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const createDefaultSettings = async () => {
-    try {
-      const defaultSettings = {
-        store_name: '30 Express',
-        store_phone: '+244 936 953 381',
-        store_email: 'contato@30express.com',
-        store_address: 'Mercado 30, Luanda, Angola',
-        store_whatsapp: '+244 936 953 381',
-        delivery_base_fee: 0,
-        delivery_fee_per_km: 400,
-        delivery_max_distance: 20,
-        delivery_estimated_time: 60,
-        currency: 'AOA',
-        timezone: 'Africa/Luanda',
-        maintenance_mode: false,
-        allow_guest_checkout: true,
-        min_order_value: 0,
-        max_order_value: 100000,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-
-      const { data, error } = await supabase
-        .from('settings')
-        .insert([defaultSettings])
-        .select()
-        .single();
-
-      if (error) throw error;
-      if (data) setSettings(data);
-    } catch (error) {
-      console.error('Erro ao criar configurações padrão:', error);
-    }
-  };
-
+  // ============================================================
+  // SALVAR
+  // ============================================================
   const handleSave = async () => {
     setSaving(true);
-    setError(null);
-    setSuccess(false);
-
     try {
-      const updateData = {
-        ...settings,
-        updated_at: new Date().toISOString()
+      const payload = {
+        ...formData,
+        updated_at: new Date().toISOString(),
       };
 
-      if (settings.id) {
-        // Atualizar
+      if (settingsId) {
         const { error } = await supabase
           .from('settings')
-          .update(updateData)
-          .eq('id', settings.id);
-
+          .update(payload)
+          .eq('id', settingsId);
         if (error) throw error;
       } else {
-        // Criar
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('settings')
-          .insert([updateData]);
-
+          .insert([payload])
+          .select()
+          .single();
         if (error) throw error;
+        if (data) setSettingsId(data.id);
       }
 
-      setSuccess(true);
-      setTimeout(() => setSuccess(false), 3000);
-    } catch (error: any) {
-      console.error('Erro ao salvar:', error);
-      setError(error.message);
+      alert('✅ Configurações salvas!');
+    } catch (error) {
+      console.error('Erro ao salvar configurações:', error);
+      alert('❌ Erro ao salvar configurações');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleChange = (field: keyof SettingsData, value: any) => {
-    setSettings(prev => ({ ...prev, [field]: value }));
+  // ============================================================
+  // HELPERS DE FORM
+  // ============================================================
+  const updateField = <K extends keyof SettingsForm>(
+    field: K,
+    value: SettingsForm[K]
+  ) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
+  // ============================================================
+  // LOADING
+  // ============================================================
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-[#2d6a4f] mx-auto"></div>
-          <p className="mt-4 text-[#2d6a4f] font-medium">Carregando configurações...</p>
+          <p className="mt-4 text-[#2d6a4f] font-medium">
+            Carregando configurações...
+          </p>
         </div>
       </div>
     );
   }
 
+  // ============================================================
+  // RENDER
+  // ============================================================
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold text-[#2d6a4f] flex items-center gap-2">
-            <Settings className="w-8 h-8" />
+            <SettingsIcon className="w-8 h-8" />
             Configurações
           </h1>
-          <p className="text-gray-500 mt-1">Gerencie as configurações da plataforma</p>
+          <p className="text-gray-500 mt-1">
+            Gerencie as configurações da plataforma
+          </p>
         </div>
-        <div className="flex items-center gap-3">
-          {success && (
-            <span className="text-green-600 flex items-center gap-1 text-sm">
-              <CheckCircle className="w-4 h-4" />
-              Salvo com sucesso!
-            </span>
-          )}
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-6 py-3 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition flex items-center gap-2 shadow-lg hover:shadow-xl disabled:opacity-50"
-          >
-            {saving ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Salvando...
-              </>
-            ) : (
-              <>
-                <Save className="w-4 h-4" />
-                Salvar Configurações
-              </>
-            )}
-          </button>
-        </div>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="px-6 py-2 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition flex items-center gap-2 disabled:opacity-50"
+        >
+          <Save className="w-4 h-4" />
+          {saving ? 'Salvando...' : 'Salvar Alterações'}
+        </button>
       </div>
-
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-center gap-2">
-          <AlertCircle className="w-5 h-5" />
-          {error}
-        </div>
-      )}
 
       {/* Tabs */}
-      <div className="bg-white rounded-3xl shadow-lg overflow-hidden">
-        <div className="border-b border-gray-200">
-          <nav className="flex overflow-x-auto px-4 py-3 gap-2">
-            {[
-              { id: 'general', icon: Store, label: 'Geral' },
-              { id: 'delivery', icon: Truck, label: 'Entregas' },
-              { id: 'payments', icon: CreditCard, label: 'Pagamentos' },
-              { id: 'security', icon: Shield, label: 'Segurança' },
-              { id: 'notifications', icon: Bell, label: 'Notificações' },
-            ].map((tab) => {
-              const Icon = tab.icon;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl transition whitespace-nowrap ${
-                    activeTab === tab.id
-                      ? 'bg-[#2d6a4f] text-white'
-                      : 'text-gray-600 hover:bg-gray-100'
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
-                  {tab.label}
-                </button>
-              );
-            })}
-          </nav>
-        </div>
-
-        <div className="p-6">
-          {/* Tab: Geral */}
-          {activeTab === 'general' && (
-            <div className="space-y-4">
-              <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                <Store className="w-5 h-5 text-[#2d6a4f]" />
-                Informações da Loja
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nome da Loja</label>
-                  <input
-                    type="text"
-                    value={settings.store_name}
-                    onChange={(e) => handleChange('store_name', e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Telefone</label>
-                  <input
-                    type="text"
-                    value={settings.store_phone}
-                    onChange={(e) => handleChange('store_phone', e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                  <input
-                    type="email"
-                    value={settings.store_email}
-                    onChange={(e) => handleChange('store_email', e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">WhatsApp</label>
-                  <input
-                    type="text"
-                    value={settings.store_whatsapp}
-                    onChange={(e) => handleChange('store_whatsapp', e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Endereço</label>
-                  <input
-                    type="text"
-                    value={settings.store_address}
-                    onChange={(e) => handleChange('store_address', e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-                  />
-                </div>
-              </div>
-
-              <div className="pt-4 border-t border-gray-200">
-                <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                  <Globe className="w-5 h-5 text-[#2d6a4f]" />
-                  Configurações Regionais
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Moeda</label>
-                    <select
-                      value={settings.currency}
-                      onChange={(e) => handleChange('currency', e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-                    >
-                      <option value="AOA">AOA - Kwanza</option>
-                      <option value="USD">USD - Dólar</option>
-                      <option value="EUR">EUR - Euro</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Fuso Horário</label>
-                    <select
-                      value={settings.timezone}
-                      onChange={(e) => handleChange('timezone', e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-                    >
-                      <option value="Africa/Luanda">Africa/Luanda</option>
-                      <option value="Africa/Lagos">Africa/Lagos</option>
-                      <option value="UTC">UTC</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Tab: Entregas */}
-          {activeTab === 'delivery' && (
-            <div className="space-y-4">
-              <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                <Truck className="w-5 h-5 text-[#2d6a4f]" />
-                Configurações de Entrega
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Taxa Base (Kz)</label>
-                  <input
-                    type="number"
-                    value={settings.delivery_base_fee}
-                    onChange={(e) => handleChange('delivery_base_fee', parseFloat(e.target.value) || 0)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Taxa por Km (Kz)</label>
-                  <input
-                    type="number"
-                    value={settings.delivery_fee_per_km}
-                    onChange={(e) => handleChange('delivery_fee_per_km', parseFloat(e.target.value) || 0)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Distância Máxima (km)</label>
-                  <input
-                    type="number"
-                    value={settings.delivery_max_distance}
-                    onChange={(e) => handleChange('delivery_max_distance', parseFloat(e.target.value) || 0)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Tempo Estimado (min)</label>
-                  <input
-                    type="number"
-                    value={settings.delivery_estimated_time}
-                    onChange={(e) => handleChange('delivery_estimated_time', parseFloat(e.target.value) || 0)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-                  />
-                </div>
-              </div>
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-700">
-                <p className="font-medium">📌 Como funciona o cálculo:</p>
-                <p className="mt-1">Taxa total = Taxa Base + (Distância × Taxa por Km) — Ex: 20 km × 400 Kz = 8.000 Kz</p>
-                <p className="mt-1 text-xs opacity-75">Distância máxima: {settings.delivery_max_distance} km</p>
-              </div>
-            </div>
-          )}
-
-          {/* Tab: Pagamentos */}
-          {activeTab === 'payments' && (
-            <div className="space-y-4">
-              <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                <CreditCard className="w-5 h-5 text-[#2d6a4f]" />
-                Configurações de Pagamento
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Valor Mínimo do Pedido (Kz)</label>
-                  <input
-                    type="number"
-                    value={settings.min_order_value}
-                    onChange={(e) => handleChange('min_order_value', parseFloat(e.target.value) || 0)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Valor Máximo do Pedido (Kz)</label>
-                  <input
-                    type="number"
-                    value={settings.max_order_value}
-                    onChange={(e) => handleChange('max_order_value', parseFloat(e.target.value) || 0)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-                  />
-                </div>
-              </div>
-              <div className="flex items-center gap-3 pt-2">
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={settings.allow_guest_checkout}
-                    onChange={(e) => handleChange('allow_guest_checkout', e.target.checked)}
-                    className="w-4 h-4 text-[#2d6a4f] rounded focus:ring-[#2d6a4f]"
-                  />
-                  <span className="text-sm text-gray-700">Permitir compra sem cadastro (convidado)</span>
-                </label>
-              </div>
-            </div>
-          )}
-
-          {/* Tab: Segurança */}
-          {activeTab === 'security' && (
-            <div className="space-y-4">
-              <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                <Shield className="w-5 h-5 text-[#2d6a4f]" />
-                Segurança
-              </h2>
-              <div className="grid grid-cols-1 gap-4">
-                <div className="flex items-center justify-between p-4 bg-[#f8f6f4] rounded-xl">
-                  <div>
-                    <p className="font-medium text-gray-800">Modo Manutenção</p>
-                    <p className="text-sm text-gray-500">Bloquear acesso à loja durante manutenção</p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={settings.maintenance_mode}
-                      onChange={(e) => handleChange('maintenance_mode', e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#2d6a4f]/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#2d6a4f]"></div>
-                  </label>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Tab: Notificações */}
-          {activeTab === 'notifications' && (
-            <div className="space-y-4">
-              <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                <Bell className="w-5 h-5 text-[#2d6a4f]" />
-                Notificações
-              </h2>
-              <div className="space-y-3">
-                {[
-                  { id: 'new_order', label: 'Novo pedido', description: 'Receber notificação quando um novo pedido for feito' },
-                  { id: 'order_status', label: 'Atualização de status', description: 'Receber notificação quando o status do pedido mudar' },
-                  { id: 'delivery_complete', label: 'Entrega concluída', description: 'Receber notificação quando uma entrega for concluída' },
-                  { id: 'low_stock', label: 'Estoque baixo', description: 'Receber notificação quando um produto estiver com estoque baixo' },
-                ].map((item) => (
-                  <div key={item.id} className="flex items-center justify-between p-4 bg-[#f8f6f4] rounded-xl">
-                    <div>
-                      <p className="font-medium text-gray-800">{item.label}</p>
-                      <p className="text-sm text-gray-500">{item.description}</p>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input type="checkbox" className="sr-only peer" defaultChecked />
-                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#2d6a4f]/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#2d6a4f]"></div>
-                    </label>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+      <div className="bg-white rounded-3xl shadow-lg p-2 flex gap-2">
+        <button
+          onClick={() => setActiveTab('store')}
+          className={`flex-1 py-3 px-4 rounded-2xl font-medium transition flex items-center justify-center gap-2 ${
+            activeTab === 'store'
+              ? 'bg-[#2d6a4f] text-white'
+              : 'text-gray-500 hover:bg-gray-50'
+          }`}
+        >
+          <Store className="w-4 h-4" />
+          Loja
+        </button>
+        <button
+          onClick={() => setActiveTab('delivery')}
+          className={`flex-1 py-3 px-4 rounded-2xl font-medium transition flex items-center justify-center gap-2 ${
+            activeTab === 'delivery'
+              ? 'bg-[#2d6a4f] text-white'
+              : 'text-gray-500 hover:bg-gray-50'
+          }`}
+        >
+          <Truck className="w-4 h-4" />
+          Entrega
+        </button>
+        <button
+          onClick={() => setActiveTab('payment')}
+          className={`flex-1 py-3 px-4 rounded-2xl font-medium transition flex items-center justify-center gap-2 ${
+            activeTab === 'payment'
+              ? 'bg-[#2d6a4f] text-white'
+              : 'text-gray-500 hover:bg-gray-50'
+          }`}
+        >
+          <CreditCard className="w-4 h-4" />
+          Pagamento
+        </button>
       </div>
 
-      {/* Informações da Última Atualização */}
-      <div className="bg-white rounded-3xl shadow-lg p-4 text-center text-sm text-gray-400">
-        <p>Última atualização: {settings.updated_at ? new Date(settings.updated_at).toLocaleString('pt-AO') : 'Nunca'}</p>
+      {/* Conteúdo das Tabs */}
+      <div className="bg-white rounded-3xl shadow-lg p-6">
+        {/* TAB: Loja */}
+        {activeTab === 'store' && (
+          <div className="space-y-5">
+            <h2 className="text-lg font-bold text-[#2d6a4f] flex items-center gap-2 mb-4">
+              <Store className="w-5 h-5" />
+              Informações da Loja
+            </h2>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Nome da Loja
+              </label>
+              <input
+                type="text"
+                value={formData.store_name}
+                onChange={(e) => updateField('store_name', e.target.value)}
+                className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Telefone
+                </label>
+                <input
+                  type="tel"
+                  value={formData.store_phone || ''}
+                  onChange={(e) => updateField('store_phone', e.target.value)}
+                  placeholder="+244 9XX XXX XXX"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  WhatsApp
+                </label>
+                <input
+                  type="tel"
+                  value={formData.whatsapp || ''}
+                  onChange={(e) => updateField('whatsapp', e.target.value)}
+                  placeholder="+244 9XX XXX XXX"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Email
+              </label>
+              <input
+                type="email"
+                value={formData.store_email || ''}
+                onChange={(e) => updateField('store_email', e.target.value)}
+                placeholder="contato@30express.ao"
+                className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Endereço
+              </label>
+              <textarea
+                value={formData.store_address || ''}
+                onChange={(e) => updateField('store_address', e.target.value)}
+                rows={3}
+                placeholder="Endereço completo do Mercado do 30"
+                className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f] resize-none"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Hora de Abertura
+                </label>
+                <input
+                  type="time"
+                  value={formData.open_hours}
+                  onChange={(e) => updateField('open_hours', e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Hora de Fecho
+                </label>
+                <input
+                  type="time"
+                  value={formData.close_hours}
+                  onChange={(e) => updateField('close_hours', e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB: Entrega */}
+        {activeTab === 'delivery' && (
+          <div className="space-y-5">
+            <h2 className="text-lg font-bold text-[#2d6a4f] flex items-center gap-2 mb-4">
+              <Truck className="w-5 h-5" />
+              Configurações de Entrega
+            </h2>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Taxa Base (Kz)
+                </label>
+                <input
+                  type="number"
+                  value={formData.delivery_base_fee}
+                  onChange={(e) =>
+                    updateField(
+                      'delivery_base_fee',
+                      parseFloat(e.target.value) || 0
+                    )
+                  }
+                  min="0"
+                  step="50"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Taxa por KM (Kz)
+                </label>
+                <input
+                  type="number"
+                  value={formData.delivery_per_km}
+                  onChange={(e) =>
+                    updateField(
+                      'delivery_per_km',
+                      parseFloat(e.target.value) || 0
+                    )
+                  }
+                  min="0"
+                  step="10"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Pedido Mínimo (Kz)
+              </label>
+              <input
+                type="number"
+                value={formData.min_order}
+                onChange={(e) =>
+                  updateField('min_order', parseFloat(e.target.value) || 0)
+                }
+                min="0"
+                step="100"
+                className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
+              />
+            </div>
+
+            <div className="p-4 bg-[#f0f4f0] rounded-xl">
+              <p className="text-sm text-gray-600">
+                <strong>Exemplo de cálculo:</strong> Para uma entrega a 3 km
+                do Mercado do 30, a taxa será de{' '}
+                <strong>
+                  {(
+                    formData.delivery_base_fee +
+                    formData.delivery_per_km * 3
+                  ).toLocaleString('pt-AO')}{' '}
+                  Kz
+                </strong>
+                .
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* TAB: Pagamento */}
+        {activeTab === 'payment' && (
+          <div className="space-y-5">
+            <h2 className="text-lg font-bold text-[#2d6a4f] flex items-center gap-2 mb-4">
+              <CreditCard className="w-5 h-5" />
+              Métodos de Pagamento
+            </h2>
+
+            <p className="text-sm text-gray-500 mb-4">
+              Selecione os métodos de pagamento aceitos na entrega:
+            </p>
+
+            <div className="space-y-3">
+              <label className="flex items-center gap-3 p-4 bg-[#f8f6f4] rounded-xl cursor-pointer hover:bg-[#f0f4f0] transition">
+                <input
+                  type="checkbox"
+                  checked={formData.accepts_cash}
+                  onChange={(e) =>
+                    updateField('accepts_cash', e.target.checked)
+                  }
+                  className="w-5 h-5 accent-[#2d6a4f]"
+                />
+                <div className="flex-1">
+                  <p className="font-medium text-gray-800">
+                    Dinheiro na Entrega
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Cliente paga em cash ao receber o pedido
+                  </p>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-3 p-4 bg-[#f8f6f4] rounded-xl cursor-pointer hover:bg-[#f0f4f0] transition">
+                <input
+                  type="checkbox"
+                  checked={formData.accepts_card}
+                  onChange={(e) =>
+                    updateField('accepts_card', e.target.checked)
+                  }
+                  className="w-5 h-5 accent-[#2d6a4f]"
+                />
+                <div className="flex-1">
+                  <p className="font-medium text-gray-800">
+                    Cartão na Entrega
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Entregador leva POS/multicaixa
+                  </p>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-3 p-4 bg-[#f8f6f4] rounded-xl cursor-pointer hover:bg-[#f0f4f0] transition">
+                <input
+                  type="checkbox"
+                  checked={formData.accepts_transfer}
+                  onChange={(e) =>
+                    updateField('accepts_transfer', e.target.checked)
+                  }
+                  className="w-5 h-5 accent-[#2d6a4f]"
+                />
+                <div className="flex-1">
+                  <p className="font-medium text-gray-800">
+                    Transferência Bancária
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Cliente envia comprovativo antes da entrega
+                  </p>
+                </div>
+              </label>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Botão de salvar inferior (para mobile) */}
+      <div className="flex md:hidden">
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="w-full py-3 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition flex items-center justify-center gap-2 disabled:opacity-50"
+        >
+          <CheckCircle className="w-5 h-5" />
+          {saving ? 'Salvando...' : 'Salvar Alterações'}
+        </button>
       </div>
     </div>
   );

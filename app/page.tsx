@@ -865,7 +865,7 @@ export default function HomePage() {
                 </li>
                 <li className="flex items-center gap-2">
                   <Mail className="w-4 h-4 text-[#f4a261]" />
-                  <span>contato@30express.com</span>
+                  <span>30express2025@gmail.com</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <Clock className="w-4 h-4 text-[#f4a261]" />

@@ -2,153 +2,203 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { supabase } from '@/lib/supabase/client';
-import { Upload, X, Image as ImageIcon, Loader2 } from 'lucide-react';
 import Image from 'next/image';
+import { supabase } from '@/lib/supabase/client';
+import { Upload, X, Loader2 } from 'lucide-react';
 
-interface ImageUploadProps {
-  value: string;
-  onChange: (url: string) => void;
-  onRemove?: () => void;
+// ============================================================
+// TIPOS
+// ============================================================
+type ImageUploadProps = {
+  value?: string | null;
+  onChange: (url: string | null) => void;
+  bucket?: string;
   folder?: string;
+  maxSizeMB?: number;
   className?: string;
-}
+};
 
-export function ImageUpload({ 
-  value, 
-  onChange, 
-  onRemove, 
-  folder = 'products',
-  className = ''
+// ============================================================
+// COMPONENTE
+// ============================================================
+export default function ImageUpload({
+  value,
+  onChange,
+  bucket = 'product-images',
+  folder = 'uploads',
+  maxSizeMB = 5,
+  className = '',
 }: ImageUploadProps) {
   const [uploading, setUploading] = useState(false);
-  const [preview, setPreview] = useState<string | null>(value || null);
+  const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // ============================================================
+  // SELECIONAR ARQUIVO
+  // ============================================================
+  const handleFileSelect = () => {
+    fileInputRef.current?.click();
+  };
+
+  // ============================================================
+  // UPLOAD
+  // ============================================================
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validar tipo de arquivo
+    setError(null);
+
+    // Validar tipo
     if (!file.type.startsWith('image/')) {
-      alert('Por favor, selecione uma imagem válida.');
+      setError('Por favor, selecione uma imagem válida');
       return;
     }
 
-    // Validar tamanho (máx 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      alert('A imagem deve ter no máximo 5MB.');
+    // Validar tamanho
+    if (file.size > maxSizeMB * 1024 * 1024) {
+      setError(`A imagem deve ter no máximo ${maxSizeMB}MB`);
       return;
     }
 
     setUploading(true);
 
     try {
-      // Criar preview local
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setPreview(e.target?.result as string);
-      };
-      reader.readAsDataURL(file);
-
-      // Upload para o Supabase
+      // Gerar nome único
       const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}.${fileExt}`;
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
       const filePath = `${folder}/${fileName}`;
 
-      const { data, error } = await supabase.storage
-        .from('product_images')
-        .upload(filePath, file);
+      // Upload para o Supabase Storage
+      const { error: uploadError } = await supabase.storage
+        .from(bucket)
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false,
+        });
 
-      if (error) throw error;
+      if (uploadError) throw uploadError;
 
       // Obter URL pública
-      const { data: { publicUrl } } = supabase.storage
-        .from('product_images')
+      const { data: publicUrlData } = supabase.storage
+        .from(bucket)
         .getPublicUrl(filePath);
 
-      onChange(publicUrl);
-      setPreview(publicUrl);
-      
-      alert('✅ Imagem enviada com sucesso!');
+      if (!publicUrlData?.publicUrl) {
+        throw new Error('Não foi possível obter a URL da imagem');
+      }
 
-    } catch (error) {
-      console.error('Erro ao fazer upload:', error);
-      alert('❌ Erro ao fazer upload da imagem.');
-      setPreview(value || null);
+      onChange(publicUrlData.publicUrl);
+    } catch (err) {
+      console.error('Erro no upload:', err);
+      setError(
+        err instanceof Error ? err.message : 'Erro ao fazer upload da imagem'
+      );
     } finally {
       setUploading(false);
+      // Limpar o input para permitir selecionar a mesma imagem novamente
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
     }
   };
 
+  // ============================================================
+  // REMOVER IMAGEM
+  // ============================================================
   const handleRemove = () => {
-    setPreview(null);
-    onChange('');
-    if (onRemove) onRemove();
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    onChange(null);
+    setError(null);
   };
 
+  // ============================================================
+  // RENDER
+  // ============================================================
   return (
-    <div className={`space-y-2 ${className}`}>
-      <div className="flex items-center gap-4">
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
-          className="px-4 py-2 border-2 border-dashed border-gray-300 rounded-xl hover:border-[#2d6a4f] hover:bg-[#f0f7f0] transition flex items-center gap-2 disabled:opacity-50"
-        >
-          {uploading ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Enviando...
-            </>
-          ) : (
-            <>
-              <Upload className="w-4 h-4" />
-              Selecionar Imagem
-            </>
-          )}
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          onChange={handleFileSelect}
-          className="hidden"
-        />
-        {preview && (
+    <div className={className}>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleUpload}
+        className="hidden"
+      />
+
+      {value ? (
+        // Preview da imagem
+        <div className="relative group">
+          <div className="relative w-full aspect-square rounded-2xl overflow-hidden border border-gray-200 bg-gray-50">
+            <Image
+              src={value}
+              alt="Imagem do produto"
+              fill
+              sizes="(max-width: 768px) 100vw, 300px"
+              className="object-cover"
+              unoptimized
+            />
+          </div>
+
+          {/* Botão remover */}
           <button
             type="button"
             onClick={handleRemove}
-            className="p-2 hover:bg-red-50 rounded-lg transition text-red-500"
+            className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+            title="Remover imagem"
           >
             <X className="w-4 h-4" />
           </button>
-        )}
-        <span className="text-xs text-gray-400">
-          PNG, JPG, WEBP • máx 5MB
-        </span>
-      </div>
 
-      {/* Preview da imagem */}
-      {preview && (
-        <div className="relative w-32 h-32 rounded-xl overflow-hidden border border-gray-200">
-          <img
-            src={preview}
-            alt="Preview do produto"
-            className="w-full h-full object-cover"
-          />
-          <div className="absolute inset-0 flex items-center justify-center bg-black/0 hover:bg-black/30 transition">
-            <span className="text-white opacity-0 hover:opacity-100 transition text-xs font-medium">
-              {uploading ? 'Enviando...' : 'Clique para trocar'}
-            </span>
-          </div>
+          {/* Botão alterar (aparece ao passar o mouse) */}
+          <button
+            type="button"
+            onClick={handleFileSelect}
+            className="absolute inset-0 flex items-center justify-center bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl"
+          >
+            <div className="text-center">
+              <Upload className="w-6 h-6 mx-auto mb-1" />
+              <span className="text-sm font-medium">Alterar imagem</span>
+            </div>
+          </button>
         </div>
+      ) : (
+        // Área de upload vazia
+        <button
+          type="button"
+          onClick={handleFileSelect}
+          disabled={uploading}
+          className="w-full aspect-square rounded-2xl border-2 border-dashed border-gray-300 hover:border-[#2d6a4f] hover:bg-[#f0f4f0] transition flex flex-col items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {uploading ? (
+            <>
+              <Loader2 className="w-8 h-8 text-[#2d6a4f] animate-spin" />
+              <span className="text-sm text-[#2d6a4f] font-medium">
+                A enviar...
+              </span>
+            </>
+          ) : (
+            <>
+              <div className="w-14 h-14 bg-[#f0f4f0] rounded-full flex items-center justify-center">
+                <Upload className="w-7 h-7 text-[#2d6a4f]" />
+              </div>
+              <div className="text-center">
+                <p className="text-sm font-medium text-gray-700">
+                  Carregar imagem
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  PNG, JPG, WEBP • Máx {maxSizeMB}MB
+                </p>
+              </div>
+            </>
+          )}
+        </button>
+      )}
+
+      {/* Mensagem de erro */}
+      {error && (
+        <p className="mt-2 text-sm text-red-600 flex items-center gap-1">
+          <span>⚠️</span>
+          {error}
+        </p>
       )}
     </div>
   );

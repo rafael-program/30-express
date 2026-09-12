@@ -6,7 +6,14 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Leaf, UserPlus, ArrowLeft, ShieldCheck, Truck, Sparkles } from 'lucide-react';
+import {
+  UserPlus,
+  ArrowLeft,
+  ShieldCheck,
+  Truck,
+  Sparkles,
+} from 'lucide-react';
+import EmailConfirmationModal from '@/components/EmailConfirmationModal';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -19,6 +26,10 @@ export default function RegisterPage() {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Estados do modal
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState('');
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
@@ -49,10 +60,10 @@ export default function RegisterPage() {
         password: formData.password,
         options: {
           data: {
-            name: formData.name,
+            full_name: formData.name,
             phone: formData.phone,
-            role: 'client',
           },
+          emailRedirectTo: `${window.location.origin}/login`,
         },
       });
 
@@ -63,28 +74,43 @@ export default function RegisterPage() {
       }
 
       if (authData.user) {
-        const { error: userError } = await supabase
-          .from('users')
-          .insert({
-            id: authData.user.id,
-            email: formData.email,
-            name: formData.name,
-            phone: formData.phone,
-            role: 'client',
-          });
+        // ✅ O perfil é criado automaticamente pelo trigger do Supabase
+        // Se o trigger não existir, tentamos criar manualmente
+        try {
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .upsert({
+              id: authData.user.id,
+              full_name: formData.name,
+              phone: formData.phone,
+              role: 'customer',
+            });
 
-        if (userError) {
-          console.error('Error saving user profile:', userError);
+          if (profileError) {
+            console.warn('Aviso ao criar profile:', profileError);
+          }
+        } catch (profileErr) {
+          console.warn('Perfil pode já existir:', profileErr);
         }
 
-        router.push('/login');
-        router.refresh();
+        // ✅ Mostrar modal de confirmação de email
+        setRegisteredEmail(formData.email);
+        setShowEmailModal(true);
       }
-    } catch (err: any) {
-      setError(err?.message || 'Ocorreu um erro ao criar a conta.');
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'Ocorreu um erro ao criar a conta.';
+      setError(message);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCloseModal = () => {
+    setShowEmailModal(false);
+    router.push('/login');
   };
 
   return (
@@ -95,8 +121,8 @@ export default function RegisterPage() {
 
       <div className="max-w-md w-full relative z-10">
         {/* Voltar para início */}
-        <Link 
-          href="/" 
+        <Link
+          href="/"
           className="inline-flex items-center gap-2 text-sm font-medium text-[#2d6a4f] hover:text-[#1b4332] mb-6 transition group"
         >
           <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
@@ -107,11 +133,14 @@ export default function RegisterPage() {
           {/* Logo Oficial */}
           <div className="text-center mb-6">
             <Link href="/" className="inline-block hover:opacity-90 transition">
-              <img 
-                src="/logo-transparent.png" 
-                alt="30 Express - Alimentos Saudáveis & Naturais" 
-                className="h-16 mx-auto object-contain drop-shadow-sm" 
-              />
+             <Image
+  src="/logo-transparent.png"
+  alt="30 Express - Alimentos Saudáveis & Naturais"
+  width={200}
+  height={64}
+  className="h-16 mx-auto object-contain drop-shadow-sm"
+  priority
+/>
             </Link>
             <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#f0f7f3] text-[#2d6a4f] text-xs font-semibold">
               <Sparkles className="w-3.5 h-3.5 text-[#f4a261]" />
@@ -128,7 +157,10 @@ export default function RegisterPage() {
 
           <form className="space-y-4" onSubmit={handleRegister}>
             <div>
-              <label htmlFor="name" className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
+              <label
+                htmlFor="name"
+                className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1"
+              >
                 Nome Completo
               </label>
               <input
@@ -144,7 +176,10 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label htmlFor="email" className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
+              <label
+                htmlFor="email"
+                className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1"
+              >
                 Email
               </label>
               <input
@@ -160,7 +195,10 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label htmlFor="phone" className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
+              <label
+                htmlFor="phone"
+                className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1"
+              >
                 Telefone / WhatsApp
               </label>
               <input
@@ -176,7 +214,10 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
+              <label
+                htmlFor="password"
+                className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1"
+              >
                 Senha
               </label>
               <input
@@ -192,7 +233,10 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label htmlFor="confirmPassword" className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
+              <label
+                htmlFor="confirmPassword"
+                className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1"
+              >
                 Confirmar Senha
               </label>
               <input
@@ -226,7 +270,10 @@ export default function RegisterPage() {
           <div className="mt-6 pt-6 border-t border-gray-100 text-center">
             <p className="text-sm text-gray-600">
               Já possui uma conta?{' '}
-              <Link href="/login" className="font-semibold text-[#2d6a4f] hover:text-[#1b4332] hover:underline">
+              <Link
+                href="/login"
+                className="font-semibold text-[#2d6a4f] hover:text-[#1b4332] hover:underline"
+              >
                 Entrar agora
               </Link>
             </p>
@@ -244,6 +291,13 @@ export default function RegisterPage() {
           </div>
         </div>
       </div>
+
+      {/* Modal de Confirmação de Email */}
+      <EmailConfirmationModal
+        isOpen={showEmailModal}
+        email={registeredEmail}
+        onClose={handleCloseModal}
+      />
     </div>
   );
 }

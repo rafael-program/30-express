@@ -21,7 +21,7 @@ import {
   Bike,
   Car,
   Footprints,
-  MoreVertical,
+  Lock,
   TrendingUp,
   Users,
   CircleDot,
@@ -58,6 +58,7 @@ type AgentForm = {
   full_name: string;
   phone: string;
   email: string;
+  password: string;
   bi_number: string;
   vehicle: string;
   vehicle_plate: string;
@@ -124,6 +125,7 @@ export default function AdminDeliveryPage() {
     full_name: '',
     phone: '',
     email: '',
+    password: '',
     bi_number: '',
     vehicle: 'moto',
     vehicle_plate: '',
@@ -141,7 +143,6 @@ export default function AdminDeliveryPage() {
     const fetchAgents = async () => {
       setLoading(true);
       try {
-        // Query principal
         let query = supabase
           .from('delivery_agents')
           .select('*', { count: 'exact' });
@@ -165,7 +166,6 @@ export default function AdminDeliveryPage() {
 
         if (error) throw error;
 
-        // Contagens de status (sem filtro)
         const { data: allAgents } = await supabase
           .from('delivery_agents')
           .select('status');
@@ -190,7 +190,6 @@ export default function AdminDeliveryPage() {
       }
     };
 
-    // Debounce da busca (300ms)
     const timer = setTimeout(fetchAgents, searchTerm ? 300 : 0);
 
     return () => {
@@ -208,6 +207,7 @@ export default function AdminDeliveryPage() {
       full_name: '',
       phone: '',
       email: '',
+      password: '',
       bi_number: '',
       vehicle: 'moto',
       vehicle_plate: '',
@@ -222,6 +222,7 @@ export default function AdminDeliveryPage() {
       full_name: agent.full_name || '',
       phone: agent.phone || '',
       email: agent.email || '',
+      password: '',
       bi_number: agent.bi_number || '',
       vehicle: agent.vehicle || 'moto',
       vehicle_plate: agent.vehicle_plate || '',
@@ -243,31 +244,62 @@ export default function AdminDeliveryPage() {
       return;
     }
 
+    // Ao CRIAR, exige email e senha
+    if (!editingAgent) {
+      if (!formData.email.trim()) {
+        alert('Por favor, preencha o email do entregador');
+        return;
+      }
+      if (!formData.password || formData.password.length < 6) {
+        alert('A senha deve ter pelo menos 6 caracteres');
+        return;
+      }
+    }
+
     setSaving(true);
     try {
-      const payload = {
-        full_name: formData.full_name.trim(),
-        phone: formData.phone.trim(),
-        email: formData.email.trim() || null,
-        bi_number: formData.bi_number.trim(),
-        vehicle: formData.vehicle || null,
-        vehicle_plate: formData.vehicle_plate.trim() || null,
-        status: formData.status || 'active',
-        is_available: formData.status === 'active',
-        updated_at: new Date().toISOString(),
-      };
-
       if (editingAgent) {
+        // EDITAR: só atualiza delivery_agents (não mexe no auth)
+        const payload = {
+          full_name: formData.full_name.trim(),
+          phone: formData.phone.trim(),
+          email: formData.email.trim() || null,
+          bi_number: formData.bi_number.trim(),
+          vehicle: formData.vehicle || null,
+          vehicle_plate: formData.vehicle_plate.trim() || null,
+          status: formData.status || 'active',
+          is_available: formData.status === 'active',
+          updated_at: new Date().toISOString(),
+        };
+
         const { error } = await supabase
           .from('delivery_agents')
           .update(payload)
           .eq('id', editingAgent.id);
+
         if (error) throw error;
       } else {
-        const { error } = await supabase
-          .from('delivery_agents')
-          .insert([payload]);
-        if (error) throw error;
+        // CRIAR: chama a API (cria user + profile + agent)
+        const response = await fetch('/api/admin/create-delivery-agent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            full_name: formData.full_name.trim(),
+            phone: formData.phone.trim(),
+            email: formData.email.trim(),
+            password: formData.password,
+            bi_number: formData.bi_number.trim(),
+            vehicle: formData.vehicle || null,
+            vehicle_plate: formData.vehicle_plate.trim() || null,
+            status: formData.status || 'active',
+          }),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error || 'Erro ao criar entregador');
+        }
       }
 
       setShowModal(false);
@@ -275,7 +307,7 @@ export default function AdminDeliveryPage() {
       alert(
         editingAgent
           ? '✅ Entregador atualizado!'
-          : '✅ Entregador criado!'
+          : '✅ Entregador criado! Ele já pode fazer login.'
       );
     } catch (error) {
       console.error('Erro ao salvar entregador:', error);
@@ -288,7 +320,7 @@ export default function AdminDeliveryPage() {
   };
 
   // ============================================================
-  // TOGGLE STATUS RÁPIDO (na tabela)
+  // TOGGLE STATUS RÁPIDO
   // ============================================================
   const toggleStatusQuick = async (agent: DeliveryAgent) => {
     const nextStatus =
@@ -359,7 +391,6 @@ export default function AdminDeliveryPage() {
   if (loading && agents.length === 0) {
     return (
       <div className="space-y-6 animate-pulse">
-        {/* Header skeleton */}
         <div className="flex justify-between items-center">
           <div className="space-y-2">
             <div className="h-8 w-64 bg-gray-200 rounded-lg"></div>
@@ -367,15 +398,11 @@ export default function AdminDeliveryPage() {
           </div>
           <div className="h-10 w-40 bg-gray-200 rounded-xl"></div>
         </div>
-
-        {/* Cards skeleton */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="h-32 bg-white rounded-2xl shadow-sm"></div>
           ))}
         </div>
-
-        {/* Tabela skeleton */}
         <div className="h-96 bg-white rounded-2xl shadow-sm"></div>
       </div>
     );
@@ -410,7 +437,6 @@ export default function AdminDeliveryPage() {
 
       {/* Cards de Estatísticas */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {/* Total */}
         <div className="group bg-white rounded-2xl shadow-sm hover:shadow-md p-5 border border-gray-100 transition-all">
           <div className="flex items-center justify-between mb-3">
             <div className="w-11 h-11 bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl flex items-center justify-center">
@@ -422,7 +448,6 @@ export default function AdminDeliveryPage() {
           <p className="text-sm text-gray-500 mt-1">Total de Entregadores</p>
         </div>
 
-        {/* Disponíveis */}
         <div className="group bg-white rounded-2xl shadow-sm hover:shadow-md p-5 border border-gray-100 transition-all">
           <div className="flex items-center justify-between mb-3">
             <div className="w-11 h-11 bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl flex items-center justify-center">
@@ -436,7 +461,6 @@ export default function AdminDeliveryPage() {
           <p className="text-sm text-gray-500 mt-1">Disponíveis</p>
         </div>
 
-        {/* Ocupados */}
         <div className="group bg-white rounded-2xl shadow-sm hover:shadow-md p-5 border border-gray-100 transition-all">
           <div className="flex items-center justify-between mb-3">
             <div className="w-11 h-11 bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl flex items-center justify-center">
@@ -450,7 +474,6 @@ export default function AdminDeliveryPage() {
           <p className="text-sm text-gray-500 mt-1">Ocupados</p>
         </div>
 
-        {/* Offline */}
         <div className="group bg-white rounded-2xl shadow-sm hover:shadow-md p-5 border border-gray-100 transition-all">
           <div className="flex items-center justify-between mb-3">
             <div className="w-11 h-11 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl flex items-center justify-center">
@@ -567,6 +590,12 @@ export default function AdminDeliveryPage() {
                         <Phone className="w-3.5 h-3.5 text-gray-400" />
                         {agent.phone || '-'}
                       </p>
+                      {agent.email && (
+                        <p className="text-xs text-gray-400 flex items-center gap-2 mt-1">
+                          <Mail className="w-3 h-3" />
+                          {agent.email}
+                        </p>
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -632,11 +661,14 @@ export default function AdminDeliveryPage() {
           </div>
         )}
 
-        {/* Paginação */}
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-[#f8f6f4]/30">
             <div className="text-sm text-gray-500">
-              Página <span className="font-semibold text-gray-800">{currentPage}</span> de{' '}
+              Página{' '}
+              <span className="font-semibold text-gray-800">
+                {currentPage}
+              </span>{' '}
+              de{' '}
               <span className="font-semibold text-gray-800">{totalPages}</span>
             </div>
             <div className="flex gap-2">
@@ -665,8 +697,8 @@ export default function AdminDeliveryPage() {
 
       {/* Modal Criar/Editar */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl max-w-lg w-full max-h-[90vh] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full max-h-[90vh] overflow-hidden shadow-2xl">
             {/* Header do Modal */}
             <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-gradient-to-r from-[#f8f6f4] to-white">
               <div className="flex items-center gap-3">
@@ -680,7 +712,7 @@ export default function AdminDeliveryPage() {
                   <p className="text-xs text-gray-500">
                     {editingAgent
                       ? 'Atualize as informações'
-                      : 'Preencha os dados do novo entregador'}
+                      : 'Preencha os dados e defina a senha de acesso'}
                   </p>
                 </div>
               </div>
@@ -738,8 +770,7 @@ export default function AdminDeliveryPage() {
               {/* Email */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Email{' '}
-                  <span className="text-gray-400 font-normal">(opcional)</span>
+                  Email {!editingAgent && <span className="text-red-500">*</span>}
                 </label>
                 <div className="relative">
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -753,10 +784,43 @@ export default function AdminDeliveryPage() {
                       }))
                     }
                     placeholder="entregador@exemplo.com"
-                    className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f] focus:border-transparent transition-all"
+                    disabled={!!editingAgent}
+                    className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f] focus:border-transparent transition-all disabled:bg-gray-50 disabled:cursor-not-allowed"
                   />
                 </div>
+                {editingAgent && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    O email não pode ser alterado
+                  </p>
+                )}
               </div>
+
+              {/* Senha (só no criar) */}
+              {!editingAgent && (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Senha de Acesso <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="password"
+                      value={formData.password}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          password: e.target.value,
+                        }))
+                      }
+                      placeholder="Mínimo 6 caracteres"
+                      className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f] focus:border-transparent transition-all"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    O entregador usará este email e senha para fazer login
+                  </p>
+                </div>
+              )}
 
               {/* BI Number */}
               <div>
@@ -877,7 +941,7 @@ export default function AdminDeliveryPage() {
                 ) : (
                   <>
                     <CheckCircle className="w-4 h-4" />
-                    {editingAgent ? 'Atualizar' : 'Criar'}
+                    {editingAgent ? 'Atualizar' : 'Criar Entregador'}
                   </>
                 )}
               </button>

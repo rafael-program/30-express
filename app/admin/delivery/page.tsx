@@ -19,28 +19,37 @@ import {
 } from 'lucide-react';
 
 // ============================================================
-// TIPOS
+// TIPOS (adaptados ao schema real do Supabase)
 // ============================================================
 type DeliveryAgent = {
   id: string;
-  user_id: string;
-  name: string;
+  user_id: string | null;
+  full_name: string;
   phone: string;
-  vehicle_type: string | null;
-  plate: string | null;
+  email: string | null;
+  bi_number: string;
+  bi_file_url: string | null;
+  photo_url: string | null;
+  vehicle: string | null;
+  vehicle_plate: string | null;
   status: string;
+  is_available: boolean;
   current_lat: number | null;
   current_lng: number | null;
-  avatar_url: string | null;
+  active_order_id: string | null;
+  total_deliveries: number;
+  rating: number;
   created_at: string;
   updated_at: string;
 };
 
 type AgentForm = {
-  name: string;
+  full_name: string;
   phone: string;
-  vehicle_type: string;
-  plate: string;
+  email: string;
+  bi_number: string;
+  vehicle: string;
+  vehicle_plate: string;
   status: string;
 };
 
@@ -48,16 +57,16 @@ type AgentForm = {
 // CONFIG
 // ============================================================
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  available: { label: 'Disponível', color: 'bg-green-100 text-green-700' },
+  active: { label: 'Disponível', color: 'bg-green-100 text-green-700' },
   busy: { label: 'Ocupado', color: 'bg-orange-100 text-orange-700' },
   offline: { label: 'Offline', color: 'bg-gray-100 text-gray-500' },
 };
 
 const VEHICLE_OPTIONS = [
-  { value: 'motorcycle', label: 'Moto' },
-  { value: 'car', label: 'Carro' },
-  { value: 'bicycle', label: 'Bicicleta' },
-  { value: 'foot', label: 'A pé' },
+  { value: 'moto', label: 'Moto' },
+  { value: 'carro', label: 'Carro' },
+  { value: 'bicicleta', label: 'Bicicleta' },
+  { value: 'a_pé', label: 'A pé' },
 ];
 
 // ============================================================
@@ -77,11 +86,13 @@ export default function AdminDeliveryPage() {
   const [editingAgent, setEditingAgent] = useState<DeliveryAgent | null>(null);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState<AgentForm>({
-    name: '',
+    full_name: '',
     phone: '',
-    vehicle_type: 'motorcycle',
-    plate: '',
-    status: 'available',
+    email: '',
+    bi_number: '',
+    vehicle: 'moto',
+    vehicle_plate: '',
+    status: 'active',
   });
 
   const ITEMS_PER_PAGE = 10;
@@ -105,7 +116,7 @@ export default function AdminDeliveryPage() {
 
         if (searchTerm) {
           query = query.or(
-            `name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%,plate.ilike.%${searchTerm}%`
+            `full_name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%,vehicle_plate.ilike.%${searchTerm}%`
           );
         }
 
@@ -142,11 +153,13 @@ export default function AdminDeliveryPage() {
   const openCreateModal = () => {
     setEditingAgent(null);
     setFormData({
-      name: '',
+      full_name: '',
       phone: '',
-      vehicle_type: 'motorcycle',
-      plate: '',
-      status: 'available',
+      email: '',
+      bi_number: '',
+      vehicle: 'moto',
+      vehicle_plate: '',
+      status: 'active',
     });
     setShowModal(true);
   };
@@ -154,11 +167,13 @@ export default function AdminDeliveryPage() {
   const openEditModal = (agent: DeliveryAgent) => {
     setEditingAgent(agent);
     setFormData({
-      name: agent.name || '',
+      full_name: agent.full_name || '',
       phone: agent.phone || '',
-      vehicle_type: agent.vehicle_type || 'motorcycle',
-      plate: agent.plate || '',
-      status: agent.status || 'available',
+      email: agent.email || '',
+      bi_number: agent.bi_number || '',
+      vehicle: agent.vehicle || 'moto',
+      vehicle_plate: agent.vehicle_plate || '',
+      status: agent.status || 'active',
     });
     setShowModal(true);
   };
@@ -167,19 +182,26 @@ export default function AdminDeliveryPage() {
   // SALVAR
   // ============================================================
   const handleSave = async () => {
-    if (!formData.name.trim() || !formData.phone.trim()) {
-      alert('Por favor, preencha nome e telefone');
+    if (
+      !formData.full_name.trim() ||
+      !formData.phone.trim() ||
+      !formData.bi_number.trim()
+    ) {
+      alert('Por favor, preencha nome, telefone e número do BI');
       return;
     }
 
     setSaving(true);
     try {
       const payload = {
-        name: formData.name.trim(),
+        full_name: formData.full_name.trim(),
         phone: formData.phone.trim(),
-        vehicle_type: formData.vehicle_type || null,
-        plate: formData.plate.trim() || null,
-        status: formData.status,
+        email: formData.email.trim() || null,
+        bi_number: formData.bi_number.trim(),
+        vehicle: formData.vehicle || null,
+        vehicle_plate: formData.vehicle_plate.trim() || null,
+        status: formData.status || 'active',
+        is_available: formData.status === 'active',
         updated_at: new Date().toISOString(),
       };
 
@@ -205,7 +227,9 @@ export default function AdminDeliveryPage() {
       );
     } catch (error) {
       console.error('Erro ao salvar entregador:', error);
-      alert('❌ Erro ao salvar entregador');
+      const message =
+        error instanceof Error ? error.message : 'Erro ao salvar entregador';
+      alert(`❌ ${message}`);
     } finally {
       setSaving(false);
     }
@@ -215,7 +239,7 @@ export default function AdminDeliveryPage() {
   // DELETAR
   // ============================================================
   const handleDelete = async (agent: DeliveryAgent) => {
-    if (!confirm(`Excluir o entregador "${agent.name}"?`)) return;
+    if (!confirm(`Excluir o entregador "${agent.full_name}"?`)) return;
 
     try {
       const { error } = await supabase
@@ -309,7 +333,7 @@ export default function AdminDeliveryPage() {
             className="px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
           >
             <option value="all">Todos os Status</option>
-            <option value="available">Disponível</option>
+            <option value="active">Disponível</option>
             <option value="busy">Ocupado</option>
             <option value="offline">Offline</option>
           </select>
@@ -346,26 +370,26 @@ export default function AdminDeliveryPage() {
                   <tr key={agent.id} className="hover:bg-gray-50 transition">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        {agent.avatar_url ? (
+                        {agent.photo_url ? (
                           <Image
-                            src={agent.avatar_url}
-                            alt={agent.name}
+                            src={agent.photo_url}
+                            alt={agent.full_name}
                             width={40}
                             height={40}
                             className="w-10 h-10 rounded-full object-cover"
                           />
                         ) : (
                           <div className="w-10 h-10 bg-[#f0f4f0] rounded-full flex items-center justify-center text-sm font-bold text-[#2d6a4f]">
-                            {agent.name?.[0]?.toUpperCase() || 'E'}
+                            {agent.full_name?.[0]?.toUpperCase() || 'E'}
                           </div>
                         )}
                         <div>
                           <p className="font-medium text-gray-800">
-                            {agent.name}
+                            {agent.full_name}
                           </p>
-                          {agent.plate && (
+                          {agent.vehicle_plate && (
                             <p className="text-xs text-gray-400 font-mono">
-                              {agent.plate}
+                              {agent.vehicle_plate}
                             </p>
                           )}
                         </div>
@@ -378,7 +402,7 @@ export default function AdminDeliveryPage() {
                       </p>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
-                      {getVehicleLabel(agent.vehicle_type)}
+                      {getVehicleLabel(agent.vehicle)}
                     </td>
                     <td className="px-4 py-3">
                       <span
@@ -458,7 +482,7 @@ export default function AdminDeliveryPage() {
       {/* Modal Criar/Editar */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold text-[#2d6a4f] flex items-center gap-2">
                 <Truck className="w-6 h-6" />
@@ -473,20 +497,21 @@ export default function AdminDeliveryPage() {
             </div>
 
             <div className="space-y-4">
-              {/* Nome */}
+              {/* Nome Completo */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Nome *
+                  Nome Completo *
                 </label>
                 <input
                   type="text"
-                  value={formData.name}
+                  value={formData.full_name}
                   onChange={(e) =>
                     setFormData((prev) => ({
                       ...prev,
-                      name: e.target.value,
+                      full_name: e.target.value,
                     }))
                   }
+                  placeholder="Ex: Maurício Gingi"
                   className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
                 />
               </div>
@@ -510,17 +535,55 @@ export default function AdminDeliveryPage() {
                 />
               </div>
 
+              {/* Email */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Email (opcional)
+                </label>
+                <input
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      email: e.target.value,
+                    }))
+                  }
+                  placeholder="entregador@exemplo.com"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
+                />
+              </div>
+
+              {/* BI Number */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Número do BI *
+                </label>
+                <input
+                  type="text"
+                  value={formData.bi_number}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      bi_number: e.target.value,
+                    }))
+                  }
+                  placeholder="Ex: 000000000LA000"
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
+                />
+              </div>
+
               {/* Veículo */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Veículo
                 </label>
                 <select
-                  value={formData.vehicle_type}
+                  value={formData.vehicle}
                   onChange={(e) =>
                     setFormData((prev) => ({
                       ...prev,
-                      vehicle_type: e.target.value,
+                      vehicle: e.target.value,
                     }))
                   }
                   className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
@@ -536,15 +599,15 @@ export default function AdminDeliveryPage() {
               {/* Placa */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Placa
+                  Placa do Veículo
                 </label>
                 <input
                   type="text"
-                  value={formData.plate}
+                  value={formData.vehicle_plate}
                   onChange={(e) =>
                     setFormData((prev) => ({
                       ...prev,
-                      plate: e.target.value.toUpperCase(),
+                      vehicle_plate: e.target.value.toUpperCase(),
                     }))
                   }
                   placeholder="LD-00-00-XX"

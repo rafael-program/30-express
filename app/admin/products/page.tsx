@@ -4,6 +4,7 @@
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabase/client';
+import ImageUpload from '@/components/ImageUpload';
 import {
   Package,
   Plus,
@@ -16,7 +17,6 @@ import {
   CheckCircle,
   XCircle,
   TrendingUp,
-  DollarSign,
   AlertTriangle,
   Box,
 } from 'lucide-react';
@@ -97,7 +97,7 @@ export default function AdminProductsPage() {
   const ITEMS_PER_PAGE = 10;
 
   // ============================================================
-  // BUSCAR CATEGORIAS E PRODUTOS
+  // BUSCAR DADOS
   // ============================================================
   useEffect(() => {
     let cancelled = false;
@@ -138,7 +138,7 @@ export default function AdminProductsPage() {
 
         if (error) throw error;
 
-        // 3. Estatísticas globais (sem filtros)
+        // 3. Estatísticas globais
         const { data: allProducts } = await supabase
           .from('products')
           .select('stock, in_stock');
@@ -152,7 +152,6 @@ export default function AdminProductsPage() {
         });
 
         if (!cancelled) {
-          // Mapear nome da categoria
           const catsMap: Record<string, string> = {};
           (cats || []).forEach((c) => (catsMap[c.id] = c.name));
 
@@ -214,7 +213,7 @@ export default function AdminProductsPage() {
   };
 
   // ============================================================
-  // SALVAR (CRIAR / EDITAR)
+  // SALVAR
   // ============================================================
   const handleSave = async () => {
     if (!formData.name || !formData.price) {
@@ -487,6 +486,7 @@ export default function AdminProductsPage() {
                               width={48}
                               height={48}
                               className="w-full h-full object-cover"
+                              unoptimized
                             />
                           </div>
                         ) : (
@@ -704,19 +704,20 @@ export default function AdminProductsPage() {
                   />
                 </div>
 
+                {/* Substituindo a URL pelo Upload de Imagem Real */}
                 <div className="col-span-2">
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    URL da Imagem
+                    Imagem do Produto
                   </label>
-                  <input
-                    type="url"
-                    placeholder="https://..."
-                    value={formData.image_url}
-                    onChange={(e) =>
-                      setFormData({ ...formData, image_url: e.target.value })
-                    }
-                    className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-[#2d6a4f] outline-none"
-                  />
+                  <div className="w-40">
+                    <ImageUpload
+                      value={formData.image_url}
+                      onChange={(url) =>
+                        setFormData({ ...formData, image_url: url || '' })
+                      }
+                      bucket="product_images"
+                    />
+                  </div>
                 </div>
 
                 <div className="col-span-2 flex items-center gap-3 p-4 bg-gray-50 rounded-xl">

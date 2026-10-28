@@ -6,9 +6,6 @@ import Image from 'next/image';
 import { supabase } from '@/lib/supabase/client';
 import { Upload, X, Loader2 } from 'lucide-react';
 
-// ============================================================
-// TIPOS
-// ============================================================
 type ImageUploadProps = {
   value?: string | null;
   onChange: (url: string | null) => void;
@@ -18,14 +15,11 @@ type ImageUploadProps = {
   className?: string;
 };
 
-// ============================================================
-// COMPONENTE
-// ============================================================
 export default function ImageUpload({
   value,
   onChange,
-  bucket = 'product-images',
-  folder = 'uploads',
+  bucket = 'product_images',   // ✅ CORRIGIDO: underline, não hífen
+  folder = 'catalog',           // ✅ Sugestão: usar 'catalog' para organizar
   maxSizeMB = 5,
   className = '',
 }: ImageUploadProps) {
@@ -33,29 +27,21 @@ export default function ImageUpload({
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ============================================================
-  // SELECIONAR ARQUIVO
-  // ============================================================
   const handleFileSelect = () => {
     fileInputRef.current?.click();
   };
 
-  // ============================================================
-  // UPLOAD
-  // ============================================================
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setError(null);
 
-    // Validar tipo
     if (!file.type.startsWith('image/')) {
       setError('Por favor, selecione uma imagem válida');
       return;
     }
 
-    // Validar tamanho
     if (file.size > maxSizeMB * 1024 * 1024) {
       setError(`A imagem deve ter no máximo ${maxSizeMB}MB`);
       return;
@@ -64,12 +50,10 @@ export default function ImageUpload({
     setUploading(true);
 
     try {
-      // Gerar nome único
       const fileExt = file.name.split('.').pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
       const filePath = `${folder}/${fileName}`;
 
-      // Upload para o Supabase Storage
       const { error: uploadError } = await supabase.storage
         .from(bucket)
         .upload(filePath, file, {
@@ -79,7 +63,6 @@ export default function ImageUpload({
 
       if (uploadError) throw uploadError;
 
-      // Obter URL pública
       const { data: publicUrlData } = supabase.storage
         .from(bucket)
         .getPublicUrl(filePath);
@@ -96,24 +79,17 @@ export default function ImageUpload({
       );
     } finally {
       setUploading(false);
-      // Limpar o input para permitir selecionar a mesma imagem novamente
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
     }
   };
 
-  // ============================================================
-  // REMOVER IMAGEM
-  // ============================================================
   const handleRemove = () => {
     onChange(null);
     setError(null);
   };
 
-  // ============================================================
-  // RENDER
-  // ============================================================
   return (
     <div className={className}>
       <input
@@ -125,7 +101,6 @@ export default function ImageUpload({
       />
 
       {value ? (
-        // Preview da imagem
         <div className="relative group">
           <div className="relative w-full aspect-square rounded-2xl overflow-hidden border border-gray-200 bg-gray-50">
             <Image
@@ -138,7 +113,6 @@ export default function ImageUpload({
             />
           </div>
 
-          {/* Botão remover */}
           <button
             type="button"
             onClick={handleRemove}
@@ -148,7 +122,6 @@ export default function ImageUpload({
             <X className="w-4 h-4" />
           </button>
 
-          {/* Botão alterar (aparece ao passar o mouse) */}
           <button
             type="button"
             onClick={handleFileSelect}
@@ -161,7 +134,6 @@ export default function ImageUpload({
           </button>
         </div>
       ) : (
-        // Área de upload vazia
         <button
           type="button"
           onClick={handleFileSelect}
@@ -193,7 +165,6 @@ export default function ImageUpload({
         </button>
       )}
 
-      {/* Mensagem de erro */}
       {error && (
         <p className="mt-2 text-sm text-red-600 flex items-center gap-1">
           <span>⚠️</span>

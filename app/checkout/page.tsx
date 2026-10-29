@@ -18,12 +18,13 @@ import {
   CheckCircle,
   Loader2,
   MapPinHouse,
-  Phone,
   User,
   ShoppingBag,
-  X
 } from 'lucide-react';
 
+// ============================================================
+// TIPOS
+// ============================================================
 type CartItem = {
   id: string;
   name: string;
@@ -32,11 +33,27 @@ type CartItem = {
   image_url?: string;
 };
 
+type AuthUser = {
+  id: string;
+  email: string;
+};
+
+type Profile = {
+  id: string;
+  full_name: string | null;
+  phone: string | null;
+  address: string | null;
+  neighborhood: string | null;
+};
+
+// ============================================================
+// COMPONENTE
+// ============================================================
 export default function CheckoutPage() {
   const router = useRouter();
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [user, setUser] = useState<any>(null);
-  const [profile, setProfile] = useState<any>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [deliveryFee, setDeliveryFee] = useState(0);
@@ -54,22 +71,27 @@ export default function CheckoutPage() {
 
   const MARKET_LOCATION = { lat: -8.838, lng: 13.285 };
 
+  // ============================================================
+  // CARREGAR DADOS
+  // ============================================================
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        // 1. Usuário
+        const { data: { user: authUser }, error: userError } = await supabase.auth.getUser();
         
-        if (userError || !user) {
+        if (userError || !authUser) {
           router.push('/login');
           return;
         }
         
-        setUser(user);
+        setUser({ id: authUser.id, email: authUser.email || '' });
 
+        // 2. Perfil
         const { data: profileData } = await supabase
           .from('profiles')
           .select('*')
-          .eq('id', user.id)
+          .eq('id', authUser.id)
           .single();
         
         if (profileData) {
@@ -79,6 +101,7 @@ export default function CheckoutPage() {
           setCustomerName(profileData.full_name || '');
         }
 
+        // 3. Carrinho
         const savedCart = localStorage.getItem('cart');
         if (savedCart) {
           setCart(JSON.parse(savedCart));
@@ -86,6 +109,7 @@ export default function CheckoutPage() {
           router.push('/');
         }
 
+        // 4. Configurações de taxa
         let feePerKmVal = 400;
         let baseFeeVal = 0;
         try {
@@ -108,6 +132,7 @@ export default function CheckoutPage() {
           console.error('Erro ao buscar configurações de taxa:', settingsErr);
         }
 
+        // 5. Geolocalização
         if (navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(
             (position) => {
@@ -136,6 +161,9 @@ export default function CheckoutPage() {
     fetchData();
   }, [router]);
 
+  // ============================================================
+  // CALCULAR TAXA DE ENTREGA (Haversine)
+  // ============================================================
   const calculateDeliveryFee = (
     location: { lat: number; lng: number },
     currentFeePerKm = feePerKm,
@@ -153,7 +181,6 @@ export default function CheckoutPage() {
     
     setDistance(Math.round(distanceKm * 10) / 10);
     
-    // Taxa: 400 Kz por km (ex: 20km = 8.000 Kz)
     const fee = currentBaseFee + (distanceKm * currentFeePerKm);
     setDeliveryFee(Math.round(fee));
   };
@@ -161,6 +188,9 @@ export default function CheckoutPage() {
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const total = subtotal + deliveryFee;
 
+  // ============================================================
+  // GERADORES
+  // ============================================================
   const generateOrderNumber = () => {
     const date = new Date();
     const year = date.getFullYear();
@@ -174,6 +204,9 @@ export default function CheckoutPage() {
     return `QR-${orderId.slice(0, 8)}`;
   };
 
+  // ============================================================
+  // SUBMETER PEDIDO
+  // ============================================================
   const handleSubmitOrder = async () => {
     if (!user || !customerLocation) {
       setError('Localização não disponível');
@@ -192,7 +225,6 @@ export default function CheckoutPage() {
       const orderNumber = generateOrderNumber();
       const qrCode = generateQRCode(orderNumber);
 
-      // 🔥 Incluir customer_name e customer_phone
       const orderData = {
         client_id: user.id,
         customer_name: customerName || 'Cliente',
@@ -214,8 +246,6 @@ export default function CheckoutPage() {
         updated_at: new Date().toISOString()
       };
 
-      console.log('📤 Enviando pedido:', orderData);
-
       const { data: orderResult, error: orderError } = await supabase
         .from('orders')
         .insert(orderData)
@@ -229,9 +259,7 @@ export default function CheckoutPage() {
         return;
       }
 
-      console.log('✅ Pedido criado:', orderResult);
-
-      // 🔥 Adicionar itens
+      // Adicionar itens
       const orderItems = cart.map(item => ({
         order_id: orderResult.id,
         product_id: item.id,
@@ -241,8 +269,6 @@ export default function CheckoutPage() {
         total_price: item.price * item.quantity,
         created_at: new Date().toISOString()
       }));
-
-      console.log('📤 Adicionando itens:', orderItems);
 
       const { error: itemsError } = await supabase
         .from('order_items')
@@ -255,19 +281,23 @@ export default function CheckoutPage() {
         return;
       }
 
-      console.log('✅ Itens adicionados com sucesso!');
-
       localStorage.removeItem('cart');
-      router.push(`/order-confirmation?order=${orderResult.id}`);
+      
+      // ✅ CORREÇÃO: usar 'order_id' em vez de 'order'
+      router.push(`/order-confirmation?order_id=${orderResult.id}`);
 
-    } catch (error: any) {
-      console.error('💥 Erro inesperado:', error);
-      setError(error.message || 'Erro ao finalizar pedido. Tente novamente.');
+    } catch (err) {
+      console.error('💥 Erro inesperado:', err);
+      const message = err instanceof Error ? err.message : 'Erro ao finalizar pedido. Tente novamente.';
+      setError(message);
     } finally {
       setSubmitting(false);
     }
   };
 
+  // ============================================================
+  // LOADING
+  // ============================================================
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#f5f0eb]">
@@ -279,6 +309,9 @@ export default function CheckoutPage() {
     );
   }
 
+  // ============================================================
+  // RENDER
+  // ============================================================
   return (
     <div className="min-h-screen bg-[#f5f0eb] py-8">
       <div className="container mx-auto px-4 max-w-4xl">

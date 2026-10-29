@@ -1,7 +1,7 @@
 // app/dashboard/page.tsx
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import Link from 'next/link';
@@ -9,7 +9,8 @@ import {
   User, Package, Clock, MapPin, ShoppingBag, LogOut,
   Truck, CheckCircle, XCircle, AlertCircle, Calendar, Wallet,
   ClipboardList, UserCircle, Award, Menu, X,
-  Phone, Mail, Edit3, Search, MapPinHouse, Home
+  Phone, Mail, Edit3, Search, MapPinHouse, Home,
+  ArrowRight, RotateCcw, ExternalLink, Sparkles, TrendingUp,
 } from 'lucide-react';
 
 // ============================================================
@@ -60,19 +61,20 @@ type StatusConfig = {
   color: string;
   textColor: string;
   icon: React.ElementType;
+  step: number;
 };
 
 // ============================================================
 // CONFIGURAÇÃO DE STATUS
 // ============================================================
 const STATUS_MAP: Record<OrderStatus, StatusConfig> = {
-  pending: { label: 'Pendente', color: 'bg-yellow-500', textColor: 'text-yellow-600', icon: AlertCircle },
-  confirmed: { label: 'Confirmado', color: 'bg-blue-500', textColor: 'text-blue-600', icon: CheckCircle },
-  preparing: { label: 'Preparando', color: 'bg-indigo-500', textColor: 'text-indigo-600', icon: Package },
-  ready: { label: 'Pronto', color: 'bg-purple-500', textColor: 'text-purple-600', icon: CheckCircle },
-  in_transit: { label: 'Em Rota', color: 'bg-orange-500', textColor: 'text-orange-600', icon: Truck },
-  delivered: { label: 'Entregue', color: 'bg-green-500', textColor: 'text-green-600', icon: CheckCircle },
-  cancelled: { label: 'Cancelado', color: 'bg-red-500', textColor: 'text-red-600', icon: XCircle },
+  pending: { label: 'Pendente', color: 'bg-yellow-500', textColor: 'text-yellow-600', icon: AlertCircle, step: 1 },
+  confirmed: { label: 'Confirmado', color: 'bg-blue-500', textColor: 'text-blue-600', icon: CheckCircle, step: 2 },
+  preparing: { label: 'Preparando', color: 'bg-indigo-500', textColor: 'text-indigo-600', icon: Package, step: 3 },
+  ready: { label: 'Pronto', color: 'bg-purple-500', textColor: 'text-purple-600', icon: CheckCircle, step: 4 },
+  in_transit: { label: 'Em Rota', color: 'bg-orange-500', textColor: 'text-orange-600', icon: Truck, step: 5 },
+  delivered: { label: 'Entregue', color: 'bg-green-500', textColor: 'text-green-600', icon: CheckCircle, step: 6 },
+  cancelled: { label: 'Cancelado', color: 'bg-red-500', textColor: 'text-red-600', icon: XCircle, step: 0 },
 };
 
 // ============================================================
@@ -117,7 +119,6 @@ export default function DashboardPage() {
 
     const fetchData = async () => {
       try {
-        // 1. Usuário
         const { data: { user: authUser }, error: userError } = await supabase.auth.getUser();
         if (userError || !authUser) {
           router.push('/login');
@@ -125,7 +126,6 @@ export default function DashboardPage() {
         }
         if (!cancelled) setUser({ id: authUser.id, email: authUser.email || '' });
 
-        // 2. Perfil
         const { data: profileData } = await supabase
           .from('profiles')
           .select('*')
@@ -133,7 +133,6 @@ export default function DashboardPage() {
           .single();
         if (!cancelled) setProfile(profileData);
 
-        // 3. Pedidos + itens
         const { data: ordersData, error: ordersError } = await supabase
           .from('orders')
           .select(`*, items:order_items(*)`)
@@ -207,17 +206,21 @@ export default function DashboardPage() {
     );
   }
 
+  const activeOrder = orders.find((o) =>
+    ['pending', 'confirmed', 'preparing', 'ready', 'in_transit'].includes(o.status)
+  );
+
   // ============================================================
   // RENDER
   // ============================================================
   return (
     <div className="min-h-screen bg-[#f5f0eb]">
       {/* Header */}
-      <header className="bg-[#2d6a4f] shadow-lg sticky top-0 z-50">
+      <header className="bg-gradient-to-r from-[#1b4332] via-[#2d6a4f] to-[#1b4332] shadow-lg sticky top-0 z-50">
         <div className="container mx-auto px-4 py-3">
-          <div className="flex items-center justify-between">
-            <Link href="/dashboard" className="flex items-center gap-2">
-              <div className="bg-white/20 p-1.5 rounded-full">
+          <div className="flex items-center justify-between gap-4">
+            <Link href="/dashboard" className="flex items-center gap-2 group">
+              <div className="bg-white/20 p-1.5 rounded-full group-hover:bg-white/30 transition">
                 <UserCircle className="w-6 h-6 text-white" />
               </div>
               <div>
@@ -228,13 +231,19 @@ export default function DashboardPage() {
               </div>
             </Link>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               <Link
                 href="/"
                 className="hidden md:flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-full hover:bg-white/20 transition text-sm border border-white/20"
               >
                 <Home className="w-4 h-4" />
-                Loja
+                Voltar à Loja
+              </Link>
+              <Link
+                href="/"
+                className="md:hidden p-2 bg-white/10 text-white rounded-full hover:bg-white/20 transition"
+              >
+                <Home className="w-5 h-5" />
               </Link>
               <button onClick={handleLogout} className="p-2 hover:bg-white/10 rounded-full transition">
                 <LogOut className="w-5 h-5 text-white/70 hover:text-white" />
@@ -250,13 +259,13 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex flex-col md:flex-row gap-8">
+      <div className="container mx-auto px-4 py-6 md:py-8">
+        <div className="flex flex-col md:flex-row gap-6 md:gap-8">
           {/* Sidebar Desktop */}
           <aside className="hidden md:block w-64 flex-shrink-0">
             <div className="bg-white rounded-2xl shadow-lg p-6 sticky top-24">
               <div className="text-center mb-6">
-                <div className="w-20 h-20 bg-gradient-to-br from-[#2d6a4f] to-[#a7c957] rounded-full mx-auto flex items-center justify-center text-3xl text-white mb-3 font-bold">
+                <div className="w-20 h-20 bg-gradient-to-br from-[#2d6a4f] to-[#a7c957] rounded-full mx-auto flex items-center justify-center text-3xl text-white mb-3 font-bold shadow-md">
                   {profile?.full_name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U'}
                 </div>
                 <h3 className="font-semibold text-gray-800">{profile?.full_name || user?.email?.split('@')[0] || 'Usuário'}</h3>
@@ -288,13 +297,13 @@ export default function DashboardPage() {
                 ))}
               </nav>
 
-              <div className="mt-6 pt-6 border-t border-gray-100">
+              <div className="mt-6 pt-6 border-t border-gray-100 space-y-2">
                 <Link
                   href="/"
-                  className="flex items-center gap-3 px-4 py-3 text-gray-600 hover:bg-[#f5f0eb] rounded-xl transition"
+                  className="flex items-center gap-3 px-4 py-3 text-[#2d6a4f] bg-[#f0f7f3] hover:bg-[#e8f3ec] rounded-xl transition font-medium"
                 >
                   <ShoppingBag className="w-5 h-5" />
-                  <span>Continuar Comprando</span>
+                  <span>Voltar à Loja</span>
                 </Link>
               </div>
             </div>
@@ -302,8 +311,35 @@ export default function DashboardPage() {
 
           {/* Main Content */}
           <main className="flex-1 min-w-0">
+            {/* Banner de pedido ativo */}
+            {activeOrder && (
+              <div className="mb-6 bg-gradient-to-r from-[#f4a261] to-[#e76f51] rounded-2xl shadow-lg p-4 sm:p-5 text-white">
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0">
+                      <Truck className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wider font-semibold text-white/90">Pedido em andamento</p>
+                      <p className="text-lg font-bold">{formatOrderNumber(activeOrder.id)}</p>
+                      <p className="text-sm text-white/90">
+                        Status: {STATUS_MAP[activeOrder.status].label}
+                      </p>
+                    </div>
+                  </div>
+                  <Link
+                    href={`/order-confirmation?order_id=${activeOrder.id}`}
+                    className="px-4 py-2 bg-white text-[#e76f51] rounded-xl font-semibold text-sm hover:bg-white/90 transition flex items-center gap-2"
+                  >
+                    Acompanhar
+                    <ArrowRight className="w-4 h-4" />
+                  </Link>
+                </div>
+              </div>
+            )}
+
             {activeTab === 'overview' && (
-              <OverviewTab profile={profile} orders={orders} />
+              <OverviewTab profile={profile} orders={orders} user={user} />
             )}
             {activeTab === 'orders' && <OrdersTab orders={orders} />}
             {activeTab === 'profile' && (
@@ -322,7 +358,7 @@ export default function DashboardPage() {
       {/* Menu Mobile */}
       {isMobileMenuOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 md:hidden">
-          <div className="absolute right-0 top-0 h-full w-72 bg-white shadow-2xl p-6">
+          <div className="absolute right-0 top-0 h-full w-72 bg-white shadow-2xl p-6 overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <span className="font-bold text-[#2d6a4f]">Menu</span>
               <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 hover:bg-gray-100 rounded-full">
@@ -358,6 +394,14 @@ export default function DashboardPage() {
                   <span className="font-medium">{item.label}</span>
                 </button>
               ))}
+              <Link
+                href="/"
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="flex items-center gap-3 px-4 py-3 rounded-xl text-[#2d6a4f] bg-[#f0f7f3] font-medium"
+              >
+                <ShoppingBag className="w-5 h-5" />
+                Voltar à Loja
+              </Link>
               <button
                 onClick={handleLogout}
                 className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-600 hover:bg-red-50 transition"
@@ -376,7 +420,15 @@ export default function DashboardPage() {
 // ============================================================
 // ABA: VISÃO GERAL
 // ============================================================
-function OverviewTab({ profile, orders }: { profile: UserProfile | null; orders: Order[] }) {
+function OverviewTab({
+  profile,
+  orders,
+  user,
+}: {
+  profile: UserProfile | null;
+  orders: Order[];
+  user: { id: string; email: string } | null;
+}) {
   const totalOrders = orders.length;
   const deliveredOrders = orders.filter((o) => o.status === 'delivered').length;
   const pendingOrders = orders.filter(
@@ -386,14 +438,25 @@ function OverviewTab({ profile, orders }: { profile: UserProfile | null; orders:
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-2xl shadow-lg p-6">
-        <h2 className="text-2xl font-bold text-[#2d6a4f] flex items-center gap-2">
-          <Truck className="w-6 h-6" />
-          Bem-vindo de volta, {profile?.full_name?.split(' ')[0] || 'Cliente'}! 🌿
-        </h2>
-        <p className="text-gray-500 mt-1">Aqui você acompanha seus pedidos e gerencia seu perfil.</p>
+      {/* Boas-vindas */}
+      <div className="bg-white rounded-2xl shadow-lg p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-[#2d6a4f] flex items-center gap-2">
+            <Sparkles className="w-6 h-6 text-[#f4a261]" />
+            Bem-vindo de volta, {profile?.full_name?.split(' ')[0] || 'Cliente'}!
+          </h2>
+          <p className="text-gray-500 mt-1">Aqui você acompanha seus pedidos e gerencia seu perfil.</p>
+        </div>
+        <Link
+          href="/"
+          className="px-5 py-2.5 bg-[#f4a261] text-white rounded-xl hover:bg-[#e76f51] transition font-medium text-sm shadow-md flex items-center gap-2"
+        >
+          <ShoppingBag className="w-4 h-4" />
+          Nova Compra
+        </Link>
       </div>
 
+      {/* Cards de estatísticas */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard icon={Package} label="Total de Pedidos" value={totalOrders} color="bg-blue-50 text-blue-600" />
         <StatCard icon={CheckCircle} label="Entregues" value={deliveredOrders} color="bg-green-50 text-green-600" />
@@ -401,12 +464,22 @@ function OverviewTab({ profile, orders }: { profile: UserProfile | null; orders:
         <StatCard icon={Wallet} label="Total Gasto" value={formatCurrency(totalSpent)} color="bg-purple-50 text-purple-600" />
       </div>
 
+      {/* Últimos pedidos */}
       <div className="bg-white rounded-2xl shadow-lg p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-bold text-gray-800 flex items-center gap-2">
             <ClipboardList className="w-5 h-5 text-[#2d6a4f]" />
             Últimos Pedidos
           </h3>
+          {orders.length > 0 && (
+            <Link
+              href="/dashboard?tab=orders"
+              className="text-sm text-[#2d6a4f] font-medium hover:underline flex items-center gap-1"
+            >
+              Ver todos
+              <ArrowRight className="w-3 h-3" />
+            </Link>
+          )}
         </div>
 
         {orders.length === 0 ? (
@@ -415,7 +488,7 @@ function OverviewTab({ profile, orders }: { profile: UserProfile | null; orders:
             <p className="text-gray-500">Você ainda não fez nenhum pedido</p>
             <Link
               href="/"
-              className="inline-block mt-4 px-6 py-2 bg-[#2d6a4f] text-white rounded-full hover:bg-[#1b4332] transition"
+              className="inline-block mt-4 px-6 py-2 bg-[#2d6a4f] text-white rounded-full hover:bg-[#1b4332] transition font-medium"
             >
               Fazer Primeiro Pedido
             </Link>
@@ -426,16 +499,20 @@ function OverviewTab({ profile, orders }: { profile: UserProfile | null; orders:
               const status = STATUS_MAP[order.status] || STATUS_MAP.pending;
               const StatusIcon = status.icon;
               return (
-                <div
+                <Link
                   key={order.id}
-                  className="flex items-center justify-between p-4 bg-[#f8f6f4] rounded-xl hover:shadow-md transition"
+                  href={`/order-confirmation?order_id=${order.id}`}
+                  className="flex items-center justify-between p-4 bg-[#f8f6f4] rounded-xl hover:shadow-md hover:bg-[#f5f0eb] transition group"
                 >
                   <div className="flex items-center gap-4">
                     <div className={`p-2 rounded-full ${status.color} bg-opacity-20`}>
                       <StatusIcon className={`w-5 h-5 ${status.textColor}`} />
                     </div>
                     <div>
-                      <p className="font-medium text-gray-800">{formatOrderNumber(order.id)}</p>
+                      <p className="font-medium text-gray-800 flex items-center gap-2">
+                        {formatOrderNumber(order.id)}
+                        <ExternalLink className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition" />
+                      </p>
                       <p className="text-sm text-gray-500">
                         {formatDate(order.created_at)} • {order.items?.length || 0} itens
                       </p>
@@ -447,7 +524,7 @@ function OverviewTab({ profile, orders }: { profile: UserProfile | null; orders:
                       {status.label}
                     </span>
                   </div>
-                </div>
+                </Link>
               );
             })}
           </div>
@@ -459,12 +536,12 @@ function OverviewTab({ profile, orders }: { profile: UserProfile | null; orders:
 
 function StatCard({ icon: Icon, label, value, color }: { icon: React.ElementType; label: string; value: string | number; color: string }) {
   return (
-    <div className="bg-white rounded-2xl shadow-lg p-4 text-center">
-      <div className={`inline-flex p-3 rounded-full ${color} mb-2`}>
+    <div className="bg-white rounded-2xl shadow-lg p-4 sm:p-5 hover:shadow-xl transition">
+      <div className={`inline-flex p-3 rounded-full ${color} mb-3`}>
         <Icon className="w-5 h-5" />
       </div>
       <p className="text-2xl font-bold text-gray-800">{value}</p>
-      <p className="text-sm text-gray-500">{label}</p>
+      <p className="text-sm text-gray-500 mt-1">{label}</p>
     </div>
   );
 }
@@ -503,7 +580,7 @@ function OrdersTab({ orders }: { orders: Order[] }) {
             <Package className="w-6 h-6" />
             Meus Pedidos
             <span className="text-sm font-normal text-gray-400">
-              ({filteredOrders.length} pedidos)
+              ({filteredOrders.length})
             </span>
           </h2>
 
@@ -552,6 +629,8 @@ function OrdersTab({ orders }: { orders: Order[] }) {
             {filteredOrders.map((order) => {
               const status = STATUS_MAP[order.status] || STATUS_MAP.pending;
               const StatusIcon = status.icon;
+              const canRepeat = order.status === 'delivered';
+
               return (
                 <div
                   key={order.id}
@@ -587,13 +666,22 @@ function OrdersTab({ orders }: { orders: Order[] }) {
                         </div>
                       </div>
                     </div>
-                    <div className="text-right min-w-[120px]">
+                    <div className="text-right min-w-[140px]">
                       <p className="text-xl font-bold text-[#2d6a4f]">
                         {formatCurrency(order.total_amount)}
                       </p>
-                      <p className="text-sm text-gray-500">
+                      <p className="text-sm text-gray-500 mb-2">
                         Taxa: {formatCurrency(order.delivery_fee || 0)}
                       </p>
+                      <div className="flex gap-2 justify-end">
+                        <Link
+                          href={`/order-confirmation?order_id=${order.id}`}
+                          className="px-3 py-1.5 text-xs font-medium text-[#2d6a4f] bg-[#f0f7f3] hover:bg-[#e8f3ec] rounded-lg transition flex items-center gap-1"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          Acompanhar
+                        </Link>
+                      </div>
                     </div>
                   </div>
                 </div>

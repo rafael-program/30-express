@@ -4,7 +4,7 @@
 import { useRef } from 'react';
 import { useReactToPrint } from 'react-to-print';
 import { Printer, X, Scissors } from 'lucide-react';
-import QRCode from 'react-qr-code'; // ✅ Biblioteca local para o QR Code
+import QRCode from 'react-qr-code';
 
 // ============================================================
 // TIPOS
@@ -69,12 +69,12 @@ const formatOrderNumber = (id: string) => {
 // ============================================================
 function CutLine() {
   return (
-    <div className="flex items-center justify-center py-2 my-2 text-gray-500">
-      <span className="text-lg">✂️</span>
+    <div className="flex items-center justify-center py-2 my-2 text-black">
+      <Scissors className="w-4 h-4" />
       <div className="flex-1 border-t border-dashed border-black mx-2"></div>
       <span className="text-[9px] uppercase tracking-widest font-mono">Corte aqui</span>
       <div className="flex-1 border-t border-dashed border-black mx-2"></div>
-      <span className="text-lg">✂️</span>
+      <Scissors className="w-4 h-4" />
     </div>
   );
 }
@@ -143,7 +143,6 @@ function ViaCompras({ order }: { order: Order }) {
           <p className="text-[8px] text-gray-500">Assinatura</p>
         </div>
         <div className="text-center">
-           {/* ✅ QR Code gerado localmente (Offline) */}
            <div className="bg-white p-1 border border-gray-200 inline-block">
              <QRCode value={formatOrderNumber(order.id)} size={60} />
            </div>
@@ -280,21 +279,15 @@ function ViaAdministrativo({ order }: { order: Order }) {
 }
 
 // ============================================================
-// CONTEÚDO COMPLETO (Tudo em uma única página)
+// CONTEÚDO COMPLETO (Rolo Contínuo)
 // ============================================================
 function PrintContent({ order }: { order: Order }) {
   return (
     <div className="bg-white">
       <ViaCompras order={order} />
-      
-      {/* Linha de Corte */}
       <CutLine />
-      
       <ViaCliente order={order} />
-      
-      {/* Linha de Corte */}
       <CutLine />
-      
       <ViaAdministrativo order={order} />
     </div>
   );
@@ -373,24 +366,30 @@ export default function PrintOrder({
         </div>
       </div>
 
-      {/* CSS de Impressão Térmica (Sem quebra de página) */}
+      {/* 🛠️ CSS Corrigido para Impressão Térmica (Resolve a tela branca) */}
       <style jsx global>{`
         @media print {
           @page {
             size: 80mm auto;
             margin: 0;
           }
-          body {
+          
+          /* Esconde tudo na página (site inteiro) */
+          body * {
             visibility: hidden;
           }
-          body > div:has(.page-break-after) {
+          
+          /* Torna visível APENAS o container do react-to-print */
+          body > div > div, body > div > div * {
             visibility: visible;
+          }
+
+          /* Posiciona o cupom no topo da página */
+          body > div > div {
             position: absolute;
             left: 0;
             top: 0;
             width: 80mm;
-            margin: 0;
-            padding: 0;
           }
         }
       `}</style>

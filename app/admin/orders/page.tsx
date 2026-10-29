@@ -55,12 +55,13 @@ type Order = {
   delivery_agent_name?: string;
 };
 
+// ✅ TIPO CORRIGIDO PARA O SEU BANCO
 type DeliveryAgent = {
   id: string;
-  user_id: string;
-  name: string;
+  user_id: string | null;
+  full_name: string;
   phone: string;
-  vehicle_type: string | null;
+  vehicle: string | null;
   status: string;
 };
 
@@ -71,41 +72,13 @@ const STATUS_CONFIG: Record<
   OrderStatus,
   { label: string; color: string; step: number }
 > = {
-  pending: {
-    label: 'Pendente',
-    color: 'bg-yellow-100 text-yellow-700',
-    step: 1,
-  },
-  confirmed: {
-    label: 'Confirmado',
-    color: 'bg-blue-100 text-blue-700',
-    step: 2,
-  },
-  preparing: {
-    label: 'Em Preparação',
-    color: 'bg-orange-100 text-orange-700',
-    step: 3,
-  },
-  ready: {
-    label: 'Pronto',
-    color: 'bg-purple-100 text-purple-700',
-    step: 4,
-  },
-  in_transit: {
-    label: 'Em Trânsito',
-    color: 'bg-indigo-100 text-indigo-700',
-    step: 5,
-  },
-  delivered: {
-    label: 'Entregue',
-    color: 'bg-green-100 text-green-700',
-    step: 6,
-  },
-  cancelled: {
-    label: 'Cancelado',
-    color: 'bg-red-100 text-red-700',
-    step: 0,
-  },
+  pending: { label: 'Pendente', color: 'bg-yellow-100 text-yellow-700', step: 1 },
+  confirmed: { label: 'Confirmado', color: 'bg-blue-100 text-blue-700', step: 2 },
+  preparing: { label: 'Em Preparação', color: 'bg-orange-100 text-orange-700', step: 3 },
+  ready: { label: 'Pronto', color: 'bg-purple-100 text-purple-700', step: 4 },
+  in_transit: { label: 'Em Trânsito', color: 'bg-indigo-100 text-indigo-700', step: 5 },
+  delivered: { label: 'Entregue', color: 'bg-green-100 text-green-700', step: 6 },
+  cancelled: { label: 'Cancelado', color: 'bg-red-100 text-red-700', step: 0 },
 };
 
 // ============================================================
@@ -127,7 +100,7 @@ export default function AdminOrdersPage() {
   const ITEMS_PER_PAGE = 10;
 
   // ============================================================
-  // BUSCAR ENTREGADORES (uma vez)
+  // BUSCAR ENTREGADORES (Corrigido 'available' -> 'active')
   // ============================================================
   useEffect(() => {
     let cancelled = false;
@@ -137,7 +110,7 @@ export default function AdminOrdersPage() {
         const { data } = await supabase
           .from('delivery_agents')
           .select('*')
-          .eq('status', 'available');
+          .eq('status', 'active'); // ✅ 'active' em vez de 'available'
 
         if (!cancelled && data) {
           setDeliveryAgents(data);
@@ -191,16 +164,15 @@ export default function AdminOrdersPage() {
           .map((o) => o.delivery_agent_id)
           .filter(Boolean);
 
-        // ✅ const em vez de let
         const agentsMap: Record<string, string> = {};
         if (agentIds.length > 0) {
           const { data: agentsData } = await supabase
             .from('delivery_agents')
-            .select('id, name')
+            .select('id, full_name') // ✅ 'full_name' em vez de 'name'
             .in('id', agentIds);
 
           agentsData?.forEach((a) => {
-            agentsMap[a.id] = a.name;
+            agentsMap[a.id] = a.full_name;
           });
         }
 
@@ -645,7 +617,7 @@ export default function AdminOrdersPage() {
                       <option value="">Selecionar entregador...</option>
                       {deliveryAgents.map((agent) => (
                         <option key={agent.id} value={agent.id}>
-                          {agent.name} - {agent.vehicle_type || 'N/A'}
+                          {agent.full_name} - {agent.vehicle || 'N/A'} {/* ✅ Corrigido */}
                         </option>
                       ))}
                     </select>
@@ -697,11 +669,11 @@ export default function AdminOrdersPage() {
               {/* Ações */}
               <div className="flex gap-3 pt-4 border-t">
                 <Link
-                  href={`/order-confirmation?order_id=${selectedOrder.id}`}
+                  href={`/admin/orders/${selectedOrder.id}`}
                   className="flex-1 py-3 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition font-medium text-center flex items-center justify-center gap-2"
                 >
                   <Eye className="w-4 h-4" />
-                  Ver Confirmação
+                  Ver Página Completa
                 </Link>
                 <button
                   onClick={() => setShowDetailModal(false)}

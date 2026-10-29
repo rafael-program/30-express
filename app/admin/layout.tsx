@@ -2,14 +2,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import Link from 'next/link';
 import {
   LayoutDashboard,
-  Package,
   ShoppingBag,
-  Users,
   Truck,
   Settings,
   LogOut,
@@ -20,12 +18,14 @@ import {
   BarChart3,
   Store,
   ClipboardList,
-  UserCog,
-  FileText,
-  DollarSign,
-  TrendingUp,
-  Leaf
+  Leaf,
+   Users,
 } from 'lucide-react';
+
+type UserType = {
+  id: string;
+  email: string;
+};
 
 export default function AdminLayout({
   children,
@@ -33,55 +33,50 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
+  const pathname = usePathname(); // ✅ Correção para evitar erro de SSR
+  const [user, setUser] = useState<UserType | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+
     const checkAdmin = async () => {
       try {
-        console.log('🔍 Verificando admin...');
-        
-        // 1. Verificar se está logado
-        const { data: { user }, error } = await supabase.auth.getUser();
-        
-        if (error || !user) {
-          console.log('❌ Usuário não logado');
-          router.push('/login');
+        const { data: { user: authUser }, error } = await supabase.auth.getUser();
+
+        if (error || !authUser) {
+          if (!cancelled) router.push('/login');
           return;
         }
 
-        console.log('👤 Usuário:', user.id, user.email);
-
-        // 2. Buscar o perfil
-        const { data: profile, error: profileError } = await supabase
+        const { data: profile } = await supabase
           .from('profiles')
           .select('role')
-          .eq('id', user.id)
+          .eq('id', authUser.id)
           .maybeSingle();
 
-        console.log('📋 Perfil:', profile);
-
-        // 3. Verificar se é admin ou manager
         if (!profile || (profile.role !== 'admin' && profile.role !== 'manager')) {
-          console.log('❌ Usuário não é admin. Role:', profile?.role);
-          router.push('/dashboard');
+          if (!cancelled) router.push('/dashboard');
           return;
         }
 
-        console.log('✅ Admin verificado!');
-        setUser(user);
-
+        if (!cancelled) {
+          setUser({ id: authUser.id, email: authUser.email || '' });
+        }
       } catch (error) {
-        console.error('💥 Erro ao verificar admin:', error);
-        router.push('/login');
+        console.error('Erro ao verificar admin:', error);
+        if (!cancelled) router.push('/login');
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     checkAdmin();
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   const handleLogout = async () => {
@@ -165,20 +160,24 @@ export default function AdminLayout({
         {/* Sidebar Desktop */}
         <aside className={`hidden lg:block w-64 bg-white shadow-lg min-h-[calc(100vh-64px)] sticky top-16 flex-shrink-0`}>
           <nav className="p-4 space-y-1">
-            {menuItems.map((item) => (
-              <Link
-                key={item.id}
-                href={item.href}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl transition ${
-                  window.location.pathname === item.href
-                    ? 'bg-[#2d6a4f] text-white shadow-md'
-                    : 'text-gray-600 hover:bg-[#f5f0eb]'
-                }`}
-              >
-                <item.icon className="w-5 h-5" />
-                <span className="font-medium">{item.label}</span>
-              </Link>
-            ))}
+            {menuItems.map((item) => {
+              // ✅ Uso do pathname corrigido para Next.js
+              const isActive = pathname === item.href;
+              return (
+                <Link
+                  key={item.id}
+                  href={item.href}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-xl transition ${
+                    isActive
+                      ? 'bg-[#2d6a4f] text-white shadow-md'
+                      : 'text-gray-600 hover:bg-[#f5f0eb]'
+                  }`}
+                >
+                  <item.icon className="w-5 h-5" />
+                  <span className="font-medium">{item.label}</span>
+                </Link>
+              );
+            })}
           </nav>
 
           <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-100">
@@ -217,7 +216,7 @@ export default function AdminLayout({
                     href={item.href}
                     onClick={() => setIsMobileMenuOpen(false)}
                     className={`flex items-center gap-3 px-4 py-3 rounded-xl transition ${
-                      window.location.pathname === item.href
+                      pathname === item.href
                         ? 'bg-[#2d6a4f] text-white'
                         : 'text-gray-600 hover:bg-[#f5f0eb]'
                     }`}

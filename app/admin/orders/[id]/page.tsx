@@ -33,6 +33,7 @@ type OrderStatus =
   | 'pending'
   | 'confirmed'
   | 'preparing'
+  | 'ready'
   | 'in_transit'
   | 'delivered'
   | 'cancelled';
@@ -47,6 +48,7 @@ type OrderItem = {
   total_price: number;
 };
 
+// ✅ TIPO CORRIGIDO PARA O SEU BANCO
 type DeliveryAgent = {
   id: string;
   full_name: string;
@@ -94,42 +96,13 @@ const STATUS_CONFIG: Record<
     icon: typeof Clock;
   }
 > = {
-  pending: {
-    label: 'Pendente',
-    color: 'text-yellow-600',
-    bgColor: 'bg-yellow-100',
-    icon: Clock,
-  },
-  confirmed: {
-    label: 'Confirmado',
-    color: 'text-blue-600',
-    bgColor: 'bg-blue-100',
-    icon: CheckCircle,
-  },
-  preparing: {
-    label: 'Preparando',
-    color: 'text-indigo-600',
-    bgColor: 'bg-indigo-100',
-    icon: Package,
-  },
-  in_transit: {
-    label: 'Em Rota',
-    color: 'text-orange-600',
-    bgColor: 'bg-orange-100',
-    icon: Truck,
-  },
-  delivered: {
-    label: 'Entregue',
-    color: 'text-green-600',
-    bgColor: 'bg-green-100',
-    icon: CheckCircle,
-  },
-  cancelled: {
-    label: 'Cancelado',
-    color: 'text-red-600',
-    bgColor: 'bg-red-100',
-    icon: XCircle,
-  },
+  pending: { label: 'Pendente', color: 'text-yellow-600', bgColor: 'bg-yellow-100', icon: Clock },
+  confirmed: { label: 'Confirmado', color: 'text-blue-600', bgColor: 'bg-blue-100', icon: CheckCircle },
+  preparing: { label: 'Preparando', color: 'text-indigo-600', bgColor: 'bg-indigo-100', icon: Package },
+  ready: { label: 'Pronto', color: 'text-purple-600', bgColor: 'bg-purple-100', icon: CheckCircle },
+  in_transit: { label: 'Em Rota', color: 'text-orange-600', bgColor: 'bg-orange-100', icon: Truck },
+  delivered: { label: 'Entregue', color: 'text-green-600', bgColor: 'bg-green-100', icon: CheckCircle },
+  cancelled: { label: 'Cancelado', color: 'text-red-600', bgColor: 'bg-red-100', icon: XCircle },
 };
 
 // ============================================================
@@ -198,16 +171,16 @@ export default function OrderDetailPage() {
         if (orderData.delivery_agent_id) {
           const { data: agent } = await supabase
             .from('delivery_agents')
-            .select('id, name, phone, vehicle_type')
+            .select('id, full_name, phone, vehicle') // ✅ Corrigido
             .eq('id', orderData.delivery_agent_id)
             .maybeSingle();
 
           if (agent) {
             agentData = {
               id: agent.id,
-              full_name: agent.name,
+              full_name: agent.full_name, // ✅ Corrigido
               phone: agent.phone,
-              vehicle: agent.vehicle_type,
+              vehicle: agent.vehicle, // ✅ Corrigido
             };
           }
         }
@@ -251,7 +224,7 @@ export default function OrderDetailPage() {
   }, [orderId, refreshKey]);
 
   // ============================================================
-  // BUSCAR ENTREGADORES
+  // BUSCAR ENTREGADORES (Corrigido status e campos)
   // ============================================================
   useEffect(() => {
     let cancelled = false;
@@ -260,15 +233,15 @@ export default function OrderDetailPage() {
       try {
         const { data } = await supabase
           .from('delivery_agents')
-          .select('id, name, phone, vehicle_type, status')
-          .in('status', ['available', 'busy']);
+          .select('id, full_name, phone, vehicle, status') // ✅ Corrigido
+          .in('status', ['active', 'busy']); // ✅ Corrigido
 
         if (!cancelled) {
           const mapped: DeliveryAgent[] = (data || []).map((a) => ({
             id: a.id,
-            full_name: a.name,
+            full_name: a.full_name, // ✅ Corrigido
             phone: a.phone,
-            vehicle: a.vehicle_type,
+            vehicle: a.vehicle, // ✅ Corrigido
           }));
           setDeliveryAgents(mapped);
         }

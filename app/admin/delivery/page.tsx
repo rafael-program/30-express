@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 
 // ============================================================
-// TIPOS
+// TIPOS (adaptados ao schema real do Supabase)
 // ============================================================
 type DeliveryAgent = {
   id: string;
@@ -244,7 +244,6 @@ export default function AdminDeliveryPage() {
       return;
     }
 
-    // Ao CRIAR, exige email e senha
     if (!editingAgent) {
       if (!formData.email.trim()) {
         alert('Por favor, preencha o email do entregador');
@@ -259,7 +258,6 @@ export default function AdminDeliveryPage() {
     setSaving(true);
     try {
       if (editingAgent) {
-        // EDITAR: só atualiza delivery_agents (não mexe no auth)
         const payload = {
           full_name: formData.full_name.trim(),
           phone: formData.phone.trim(),
@@ -279,7 +277,6 @@ export default function AdminDeliveryPage() {
 
         if (error) throw error;
       } else {
-        // CRIAR: chama a API (cria user + profile + agent)
         const response = await fetch('/api/admin/create-delivery-agent', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -320,7 +317,7 @@ export default function AdminDeliveryPage() {
   };
 
   // ============================================================
-  // TOGGLE STATUS RÁPIDO
+  // TOGGLE STATUS RÁPIDO (na tabela)
   // ============================================================
   const toggleStatusQuick = async (agent: DeliveryAgent) => {
     const nextStatus =

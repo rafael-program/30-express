@@ -66,15 +66,9 @@ const STATUS_CONFIG: Record<
 > = {
   pending: { label: 'Pendente', color: 'bg-yellow-100 text-yellow-700' },
   confirmed: { label: 'Confirmado', color: 'bg-blue-100 text-blue-700' },
-  preparing: {
-    label: 'Em Preparação',
-    color: 'bg-orange-100 text-orange-700',
-  },
+  preparing: { label: 'Em Preparação', color: 'bg-orange-100 text-orange-700' },
   ready: { label: 'Pronto', color: 'bg-purple-100 text-purple-700' },
-  in_transit: {
-    label: 'Em Trânsito',
-    color: 'bg-indigo-100 text-indigo-700',
-  },
+  in_transit: { label: 'Em Trânsito', color: 'bg-indigo-100 text-indigo-700' },
   delivered: { label: 'Entregue', color: 'bg-green-100 text-green-700' },
   cancelled: { label: 'Cancelado', color: 'bg-red-100 text-red-700' },
 };
@@ -143,21 +137,21 @@ export default function AdminDashboardPage() {
           .lte('stock', 10)
           .gt('stock', 0);
 
-        // 4. Entregadores disponíveis
+        // 4. Entregadores disponíveis (Corrigido para o schema real)
         const { count: agentsCount } = await supabase
           .from('delivery_agents')
           .select('*', { count: 'exact', head: true })
-          .eq('status', 'available');
+          .eq('status', 'active'); // ✅ 'active' em vez de 'available'
 
-        // 5. Clientes únicos
+        // 5. Clientes únicos (Corrigido para o schema real)
         const { data: customerIds } = await supabase
           .from('orders')
-          .select('customer_id')
-          .not('customer_id', 'is', null);
+          .select('client_id') // ✅ 'client_id' em vez de 'customer_id'
+          .not('client_id', 'is', null);
 
         const uniqueCustomers = new Set(
           (customerIds || [])
-            .map((o) => o.customer_id)
+            .map((o) => o.client_id)
             .filter((id): id is string => Boolean(id))
         ).size;
 

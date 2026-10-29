@@ -1,263 +1,312 @@
-// app/admin/delivery/page.tsx
+// app/admin/reports/page.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
-import Image from 'next/image';
 import { supabase } from '@/lib/supabase/client';
 import {
-  Truck,
-  Search,
-  Edit,
-  Trash2,
-  X,
-  ChevronLeft,
-  ChevronRight,
-  User,
-  Phone,
-  CheckCircle,
-  XCircle,
+  BarChart3,
+  TrendingUp,
+  DollarSign,
+  ShoppingBag,
+  Users,
+  Package,
+  Download,
+  Calendar,
+  FileText,
+  ArrowUpRight,
 } from 'lucide-react';
 
 // ============================================================
 // TIPOS
 // ============================================================
-type DeliveryAgent = {
+type Period = 'today' | 'week' | 'month' | 'year';
+
+type OrderRow = {
   id: string;
-  user_id: string;
-  name: string;
-  phone: string;
-  vehicle_type: string | null;
-  plate: string | null;
+  total_amount: number;
   status: string;
-  current_lat: number | null;
-  current_lng: number | null;
-  avatar_url: string | null;
   created_at: string;
-  updated_at: string;
+  client_id: string | null;
 };
 
-type AgentForm = {
-  name: string;
-  phone: string;
-  vehicle_type: string;
-  plate: string;
-  status: string;
+type OrderItemRow = {
+  id: string;
+  product_id: string;
+  product_name: string;
+  quantity: number;
+  total_price: number;
+};
+
+type ReportStats = {
+  totalRevenue: number;
+  totalOrders: number;
+  totalCustomers: number;
+  avgTicket: number;
+  deliveredOrders: number;
+  cancelledOrders: number;
+  pendingOrders: number;
+};
+
+type TopProduct = {
+  product_id: string;
+  product_name: string;
+  quantity: number;
+  revenue: number;
+};
+
+type DailyData = {
+  date: string;
+  orders: number;
+  revenue: number;
 };
 
 // ============================================================
-// CONFIG
+// HELPERS
 // ============================================================
-const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  available: { label: 'Disponível', color: 'bg-green-100 text-green-700' },
-  busy: { label: 'Ocupado', color: 'bg-orange-100 text-orange-700' },
-  offline: { label: 'Offline', color: 'bg-gray-100 text-gray-500' },
+const getDateRange = (period: Period): { start: Date; end: Date } => {
+  const end = new Date();
+  const start = new Date();
+
+  switch (period) {
+    case 'today':
+      start.setHours(0, 0, 0, 0);
+      break;
+    case 'week':
+      start.setDate(end.getDate() - 7);
+      break;
+    case 'month':
+      start.setMonth(end.getMonth() - 1);
+      break;
+    case 'year':
+      start.setFullYear(end.getFullYear() - 1);
+      break;
+  }
+
+  return { start, end };
 };
 
-const VEHICLE_OPTIONS = [
-  { value: 'motorcycle', label: 'Moto' },
-  { value: 'car', label: 'Carro' },
-  { value: 'bicycle', label: 'Bicicleta' },
-  { value: 'foot', label: 'A pé' },
-];
+const getPeriodLabel = (p: Period) => {
+  const labels: Record<Period, string> = {
+    today: 'Hoje',
+    week: 'Últimos 7 dias',
+    month: 'Últimos 30 dias',
+    year: 'Último ano',
+  };
+  return labels[p];
+};
+
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat('pt-AO', {
+    style: 'currency',
+    currency: 'AOA',
+    minimumFractionDigits: 0,
+  }).format(value || 0);
+
+const formatDate = (dateString: string) =>
+  new Date(dateString).toLocaleDateString('pt-AO', {
+    day: '2-digit',
+    month: 'short',
+  });
 
 // ============================================================
 // COMPONENTE
 // ============================================================
-export default function AdminDeliveryPage() {
-  const [agents, setAgents] = useState<DeliveryAgent[]>([]);
+export default function AdminReportsPage() {
+  const [period, setPeriod] = useState<Period>('month');
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [refreshKey, setRefreshKey] = useState(0);
 
-  // Modal
-  const [showModal, setShowModal] = useState(false);
-  const [editingAgent, setEditingAgent] = useState<DeliveryAgent | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [formData, setFormData] = useState<AgentForm>({
-    name: '',
-    phone: '',
-    vehicle_type: 'motorcycle',
-    plate: '',
-    status: 'available',
+  const [stats, setStats] = useState<ReportStats>({
+    totalRevenue: 0,
+    totalOrders: 0,
+    totalCustomers: 0,
+    avgTicket: 0,
+    deliveredOrders: 0,
+    cancelledOrders: 0,
+    pendingOrders: 0,
   });
 
-  const ITEMS_PER_PAGE = 10;
+  const [topProducts, setTopProducts] = useState<TopProduct[]>([]);
+  const [dailyData, setDailyData] = useState<DailyData[]>([]);
 
   // ============================================================
-  // BUSCAR ENTREGADORES
+  // BUSCAR DADOS DO RELATÓRIO
   // ============================================================
   useEffect(() => {
     let cancelled = false;
 
-    const fetchAgents = async () => {
+    const fetchReportData = async () => {
       setLoading(true);
       try {
-        let query = supabase
-          .from('delivery_agents')
-          .select('*', { count: 'exact' });
+        const { start, end } = getDateRange(period);
 
-        if (statusFilter !== 'all') {
-          query = query.eq('status', statusFilter);
-        }
+        // 1. Buscar pedidos do período
+        const { data: ordersData, error: ordersError } = await supabase
+          .from('orders')
+          .select('*')
+          .gte('created_at', start.toISOString())
+          .lte('created_at', end.toISOString())
+          .order('created_at', { ascending: true });
 
-        if (searchTerm) {
-          query = query.or(
-            `name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%,plate.ilike.%${searchTerm}%`
-          );
-        }
+        if (ordersError) throw ordersError;
 
-        const from = (currentPage - 1) * ITEMS_PER_PAGE;
-        const to = from + ITEMS_PER_PAGE - 1;
+        const orders: OrderRow[] = ordersData || [];
 
-        const { data, error, count } = await query
-          .range(from, to)
-          .order('created_at', { ascending: false });
+        // 2. Calcular estatísticas
+        const totalRevenue = orders
+          .filter((o) => o.status !== 'cancelled')
+          .reduce((sum, o) => sum + (o.total_amount || 0), 0);
 
-        if (error) throw error;
+        const deliveredOrders = orders.filter(
+          (o) => o.status === 'delivered'
+        ).length;
+        const cancelledOrders = orders.filter(
+          (o) => o.status === 'cancelled'
+        ).length;
+        const pendingOrders = orders.filter(
+          (o) =>
+            o.status !== 'delivered' && o.status !== 'cancelled'
+        ).length;
+
+        const uniqueCustomers = new Set(
+          orders.map((o) => o.client_id).filter(Boolean)
+        ).size;
+
+        const avgTicket =
+          orders.length > 0 ? totalRevenue / orders.length : 0;
 
         if (!cancelled) {
-          setAgents(data || []);
-          setTotalPages(Math.ceil((count || 0) / ITEMS_PER_PAGE));
+          setStats({
+            totalRevenue,
+            totalOrders: orders.length,
+            totalCustomers: uniqueCustomers,
+            avgTicket,
+            deliveredOrders,
+            cancelledOrders,
+            pendingOrders,
+          });
         }
+
+        // 3. Buscar itens dos pedidos para top produtos
+        const orderIds = orders.map((o) => o.id);
+        let items: OrderItemRow[] = [];
+
+        if (orderIds.length > 0) {
+          const { data: itemsData } = await supabase
+            .from('order_items')
+            .select('*')
+            .in('order_id', orderIds);
+
+          items = itemsData || [];
+        }
+
+        // 4. Calcular top produtos
+        const productMap: Record<string, TopProduct> = {};
+        items.forEach((item) => {
+          if (!productMap[item.product_id]) {
+            productMap[item.product_id] = {
+              product_id: item.product_id,
+              product_name: item.product_name,
+              quantity: 0,
+              revenue: 0,
+            };
+          }
+          productMap[item.product_id].quantity += item.quantity;
+          productMap[item.product_id].revenue += item.total_price;
+        });
+
+        const sortedProducts = Object.values(productMap)
+          .sort((a, b) => b.revenue - a.revenue)
+          .slice(0, 5);
+
+        if (!cancelled) setTopProducts(sortedProducts);
+
+        // 5. Calcular dados diários (para gráfico)
+        const dailyMap: Record<string, DailyData> = {};
+        orders.forEach((order) => {
+          const date = new Date(order.created_at)
+            .toISOString()
+            .split('T')[0];
+
+          if (!dailyMap[date]) {
+            dailyMap[date] = { date, orders: 0, revenue: 0 };
+          }
+          dailyMap[date].orders += 1;
+          if (order.status !== 'cancelled') {
+            dailyMap[date].revenue += order.total_amount || 0;
+          }
+        });
+
+        const sortedDaily = Object.values(dailyMap).sort((a, b) =>
+          a.date.localeCompare(b.date)
+        );
+
+        if (!cancelled) setDailyData(sortedDaily);
       } catch (error) {
-        console.error('Erro ao buscar entregadores:', error);
+        console.error('Erro ao buscar dados do relatório:', error);
       } finally {
         if (!cancelled) setLoading(false);
       }
     };
 
-    fetchAgents();
+    fetchReportData();
 
     return () => {
       cancelled = true;
     };
-  }, [currentPage, statusFilter, searchTerm, refreshKey]);
+  }, [period]);
 
   // ============================================================
-  // ABRIR MODAIS
+  // EXPORTAR CSV
   // ============================================================
-  const openCreateModal = () => {
-    setEditingAgent(null);
-    setFormData({
-      name: '',
-      phone: '',
-      vehicle_type: 'motorcycle',
-      plate: '',
-      status: 'available',
-    });
-    setShowModal(true);
-  };
+  const handleExport = () => {
+    const rows = [
+      ['Métrica', 'Valor'],
+      ['Período', getPeriodLabel(period)],
+      ['Receita Total', formatCurrency(stats.totalRevenue)],
+      ['Total de Pedidos', stats.totalOrders.toString()],
+      ['Clientes Únicos', stats.totalCustomers.toString()],
+      ['Ticket Médio', formatCurrency(stats.avgTicket)],
+      ['Pedidos Entregues', stats.deliveredOrders.toString()],
+      ['Pedidos Cancelados', stats.cancelledOrders.toString()],
+      ['Pedidos Pendentes', stats.pendingOrders.toString()],
+      [],
+      ['Top Produtos', 'Quantidade', 'Receita'],
+      ...topProducts.map((p) => [
+        p.product_name,
+        p.quantity.toString(),
+        formatCurrency(p.revenue),
+      ]),
+    ];
 
-  const openEditModal = (agent: DeliveryAgent) => {
-    setEditingAgent(agent);
-    setFormData({
-      name: agent.name || '',
-      phone: agent.phone || '',
-      vehicle_type: agent.vehicle_type || 'motorcycle',
-      plate: agent.plate || '',
-      status: agent.status || 'available',
-    });
-    setShowModal(true);
-  };
-
-  // ============================================================
-  // SALVAR
-  // ============================================================
-  const handleSave = async () => {
-    if (!formData.name.trim() || !formData.phone.trim()) {
-      alert('Por favor, preencha nome e telefone');
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const payload = {
-        name: formData.name.trim(),
-        phone: formData.phone.trim(),
-        vehicle_type: formData.vehicle_type || null,
-        plate: formData.plate.trim() || null,
-        status: formData.status,
-        updated_at: new Date().toISOString(),
-      };
-
-      if (editingAgent) {
-        const { error } = await supabase
-          .from('delivery_agents')
-          .update(payload)
-          .eq('id', editingAgent.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from('delivery_agents')
-          .insert([payload]);
-        if (error) throw error;
-      }
-
-      setShowModal(false);
-      setRefreshKey((prev) => prev + 1);
-      alert(
-        editingAgent
-          ? '✅ Entregador atualizado!'
-          : '✅ Entregador criado!'
-      );
-    } catch (error) {
-      console.error('Erro ao salvar entregador:', error);
-      alert('❌ Erro ao salvar entregador');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // ============================================================
-  // DELETAR
-  // ============================================================
-  const handleDelete = async (agent: DeliveryAgent) => {
-    if (!confirm(`Excluir o entregador "${agent.name}"?`)) return;
-
-    try {
-      const { error } = await supabase
-        .from('delivery_agents')
-        .delete()
-        .eq('id', agent.id);
-      if (error) throw error;
-      setRefreshKey((prev) => prev + 1);
-      alert('✅ Entregador excluído!');
-    } catch (error) {
-      console.error('Erro ao excluir entregador:', error);
-      alert('❌ Erro ao excluir entregador');
-    }
-  };
-
-  // ============================================================
-  // FORMATADORES
-  // ============================================================
-  const getStatusBadge = (status: string) => {
-    return STATUS_CONFIG[status] || STATUS_CONFIG.offline;
-  };
-
-  const getVehicleLabel = (value: string | null) => {
-    const vehicle = VEHICLE_OPTIONS.find((v) => v.value === value);
-    return vehicle?.label || value || 'N/A';
+    const csv = rows.map((r) => r.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `relatorio-${period}-${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   // ============================================================
   // LOADING
   // ============================================================
-  if (loading && agents.length === 0) {
+  if (loading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-[#2d6a4f] mx-auto"></div>
-          <p className="mt-4 text-[#2d6a4f] font-medium">
-            Carregando entregadores...
-          </p>
+      <div className="space-y-6 animate-pulse">
+        <div className="h-10 w-64 bg-gray-200 rounded-lg"></div>
+        <div className="grid grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-32 bg-white rounded-2xl shadow-sm"></div>
+          ))}
         </div>
+        <div className="h-64 bg-white rounded-2xl shadow-sm"></div>
+        <div className="h-64 bg-white rounded-2xl shadow-sm"></div>
       </div>
     );
   }
+
+  const maxRevenue = Math.max(...dailyData.map((d) => d.revenue), 1);
 
   // ============================================================
   // RENDER
@@ -267,343 +316,208 @@ export default function AdminDeliveryPage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-[#2d6a4f] flex items-center gap-2">
-            <Truck className="w-8 h-8" />
-            Entregadores
+          <h1 className="text-3xl font-bold text-[#2d6a4f] flex items-center gap-3">
+            <div className="w-12 h-12 bg-gradient-to-br from-[#2d6a4f] to-[#40916c] rounded-2xl flex items-center justify-center shadow-lg">
+              <BarChart3 className="w-7 h-7 text-white" />
+            </div>
+            Relatórios
           </h1>
-          <p className="text-gray-500 mt-1">
-            Gerencie a equipe de entregadores
+          <p className="text-gray-500 mt-2 ml-1">
+            Análise de desempenho — {getPeriodLabel(period)}
           </p>
         </div>
-        <button
-          onClick={openCreateModal}
-          className="px-4 py-2 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition flex items-center gap-2"
-        >
-          <User className="w-4 h-4" />
-          Novo Entregador
-        </button>
-      </div>
 
-      {/* Filtros */}
-      <div className="bg-white rounded-3xl shadow-lg p-6">
-        <div className="flex flex-col md:flex-row gap-4">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar por nome, telefone ou placa..."
-              value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-            />
-          </div>
-          <select
-            value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value);
-              setCurrentPage(1);
-            }}
-            className="px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-          >
-            <option value="all">Todos os Status</option>
-            <option value="available">Disponível</option>
-            <option value="busy">Ocupado</option>
-            <option value="offline">Offline</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Tabela */}
-      <div className="bg-white rounded-3xl shadow-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-[#f8f6f4]">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Entregador
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Contacto
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Veículo
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Ações
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {agents.map((agent) => {
-                const statusBadge = getStatusBadge(agent.status);
-                return (
-                  <tr key={agent.id} className="hover:bg-gray-50 transition">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        {agent.avatar_url ? (
-                          <Image
-                            src={agent.avatar_url}
-                            alt={agent.name}
-                            width={40}
-                            height={40}
-                            className="w-10 h-10 rounded-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-10 h-10 bg-[#f0f4f0] rounded-full flex items-center justify-center text-sm font-bold text-[#2d6a4f]">
-                            {agent.name?.[0]?.toUpperCase() || 'E'}
-                          </div>
-                        )}
-                        <div>
-                          <p className="font-medium text-gray-800">
-                            {agent.name}
-                          </p>
-                          {agent.plate && (
-                            <p className="text-xs text-gray-400 font-mono">
-                              {agent.plate}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="text-sm text-gray-600 flex items-center gap-1">
-                        <Phone className="w-3 h-3" />
-                        {agent.phone || '-'}
-                      </p>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
-                      {getVehicleLabel(agent.vehicle_type)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`px-3 py-1 rounded-full text-xs font-medium ${statusBadge.color}`}
-                      >
-                        {statusBadge.label}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => openEditModal(agent)}
-                          className="p-2 hover:bg-gray-100 rounded-lg transition"
-                          title="Editar"
-                        >
-                          <Edit className="w-4 h-4 text-gray-400 hover:text-[#2d6a4f]" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(agent)}
-                          className="p-2 hover:bg-gray-100 rounded-lg transition"
-                          title="Excluir"
-                        >
-                          <Trash2 className="w-4 h-4 text-gray-400 hover:text-red-600" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        {agents.length === 0 && !loading && (
-          <div className="text-center py-12">
-            <div className="text-6xl mb-4">🛵</div>
-            <p className="text-gray-500">Nenhum entregador encontrado</p>
-            <button
-              onClick={openCreateModal}
-              className="inline-block mt-4 px-6 py-2 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition"
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+            <select
+              value={period}
+              onChange={(e) => setPeriod(e.target.value as Period)}
+              className="pl-10 pr-8 py-2.5 border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-[#2d6a4f] font-medium text-sm appearance-none cursor-pointer"
             >
-              Adicionar Entregador
-            </button>
+              <option value="today">Hoje</option>
+              <option value="week">Últimos 7 dias</option>
+              <option value="month">Últimos 30 dias</option>
+              <option value="year">Último ano</option>
+            </select>
           </div>
-        )}
 
-        {/* Paginação */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
-            <div className="text-sm text-gray-500">
-              Página {currentPage} de {totalPages}
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() =>
-                  setCurrentPage((prev) => Math.max(1, prev - 1))
-                }
-                disabled={currentPage === 1}
-                className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition disabled:opacity-50"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() =>
-                  setCurrentPage((prev) => Math.min(totalPages, prev + 1))
-                }
-                disabled={currentPage === totalPages}
-                className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition disabled:opacity-50"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        )}
+          <button
+            onClick={handleExport}
+            className="px-5 py-2.5 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition flex items-center gap-2 font-medium text-sm shadow-sm hover:shadow-md"
+          >
+            <Download className="w-4 h-4" />
+            Exportar CSV
+          </button>
+        </div>
       </div>
 
-      {/* Modal Criar/Editar */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-[#2d6a4f] flex items-center gap-2">
-                <Truck className="w-6 h-6" />
-                {editingAgent ? 'Editar Entregador' : 'Novo Entregador'}
-              </h2>
-              <button
-                onClick={() => setShowModal(false)}
-                className="p-2 hover:bg-gray-100 rounded-full transition"
-              >
-                <X className="w-5 h-5" />
-              </button>
+      {/* Cards de métricas principais */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
+          <div className="flex items-center justify-between mb-3">
+            <div className="w-11 h-11 bg-green-50 rounded-xl flex items-center justify-center">
+              <DollarSign className="w-6 h-6 text-green-600" />
             </div>
+          </div>
+          <p className="text-sm text-gray-500 mb-1">Receita Total</p>
+          <p className="text-2xl font-bold text-[#2d6a4f]">
+            {formatCurrency(stats.totalRevenue)}
+          </p>
+        </div>
 
-            <div className="space-y-4">
-              {/* Nome */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Nome *
-                </label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      name: e.target.value,
-                    }))
-                  }
-                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
+        <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
+          <div className="flex items-center justify-between mb-3">
+            <div className="w-11 h-11 bg-blue-50 rounded-xl flex items-center justify-center">
+              <ShoppingBag className="w-6 h-6 text-blue-600" />
+            </div>
+          </div>
+          <p className="text-sm text-gray-500 mb-1">Total de Pedidos</p>
+          <p className="text-2xl font-bold text-gray-800">
+            {stats.totalOrders}
+          </p>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
+          <div className="flex items-center justify-between mb-3">
+            <div className="w-11 h-11 bg-purple-50 rounded-xl flex items-center justify-center">
+              <Users className="w-6 h-6 text-purple-600" />
+            </div>
+          </div>
+          <p className="text-sm text-gray-500 mb-1">Clientes Únicos</p>
+          <p className="text-2xl font-bold text-gray-800">
+            {stats.totalCustomers}
+          </p>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
+          <div className="flex items-center justify-between mb-3">
+            <div className="w-11 h-11 bg-orange-50 rounded-xl flex items-center justify-center">
+              <TrendingUp className="w-6 h-6 text-orange-600" />
+            </div>
+          </div>
+          <p className="text-sm text-gray-500 mb-1">Ticket Médio</p>
+          <p className="text-2xl font-bold text-gray-800">
+            {formatCurrency(stats.avgTicket)}
+          </p>
+        </div>
+      </div>
+
+      {/* Status dos Pedidos */}
+      <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
+        <h2 className="text-lg font-bold text-[#2d6a4f] mb-4">
+          Status dos Pedidos
+        </h2>
+        <div className="grid grid-cols-3 gap-4">
+          <div className="text-center p-4 bg-emerald-50/50 rounded-xl border border-emerald-100">
+            <p className="text-3xl font-bold text-emerald-600">
+              {stats.deliveredOrders}
+            </p>
+            <p className="text-sm text-gray-500 mt-1 font-medium">Entregues</p>
+          </div>
+          <div className="text-center p-4 bg-amber-50/50 rounded-xl border border-amber-100">
+            <p className="text-3xl font-bold text-amber-600">
+              {stats.pendingOrders}
+            </p>
+            <p className="text-sm text-gray-500 mt-1 font-medium">Em andamento</p>
+          </div>
+          <div className="text-center p-4 bg-red-50/50 rounded-xl border border-red-100">
+            <p className="text-3xl font-bold text-red-600">
+              {stats.cancelledOrders}
+            </p>
+            <p className="text-sm text-gray-500 mt-1 font-medium">Cancelados</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Gráfico de barras (CSS puro) */}
+      <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-lg font-bold text-[#2d6a4f]">
+            Receita por Dia
+          </h2>
+          <span className="text-sm text-gray-500 font-medium bg-gray-50 px-3 py-1 rounded-lg">
+            Total do período: {formatCurrency(dailyData.reduce((sum, d) => sum + d.revenue, 0))}
+          </span>
+        </div>
+        {dailyData.length > 0 ? (
+          <div className="flex items-end gap-2 h-48 overflow-x-auto pb-2">
+            {dailyData.map((day) => (
+              <div
+                key={day.date}
+                className="flex flex-col items-center gap-2 flex-shrink-0 group"
+                style={{ minWidth: '40px' }}
+              >
+                <div className="text-[10px] font-semibold text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                  {formatCurrency(day.revenue).replace('AOA', '').trim()}
+                </div>
+                <div
+                  className="w-full bg-[#2d6a4f] rounded-t-md transition-all hover:bg-[#40916c] min-h-[4px] cursor-pointer"
+                  style={{
+                    height: `${(day.revenue / maxRevenue) * 140}px`,
+                  }}
+                  title={`${formatCurrency(day.revenue)} (${day.orders} pedidos)`}
                 />
-              </div>
-
-              {/* Telefone */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Telefone *
-                </label>
-                <input
-                  type="tel"
-                  value={formData.phone}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      phone: e.target.value,
-                    }))
-                  }
-                  placeholder="+244 9XX XXX XXX"
-                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-                />
-              </div>
-
-              {/* Veículo */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Veículo
-                </label>
-                <select
-                  value={formData.vehicle_type}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      vehicle_type: e.target.value,
-                    }))
-                  }
-                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-                >
-                  {VEHICLE_OPTIONS.map((v) => (
-                    <option key={v.value} value={v.value}>
-                      {v.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Placa */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Placa
-                </label>
-                <input
-                  type="text"
-                  value={formData.plate}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      plate: e.target.value.toUpperCase(),
-                    }))
-                  }
-                  placeholder="LD-00-00-XX"
-                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f] font-mono"
-                />
-              </div>
-
-              {/* Status */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Status
-                </label>
-                <div className="flex gap-2">
-                  {Object.entries(STATUS_CONFIG).map(([key, config]) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() =>
-                        setFormData((prev) => ({ ...prev, status: key }))
-                      }
-                      className={`flex-1 px-3 py-2 rounded-xl text-sm font-medium transition ${
-                        formData.status === key
-                          ? config.color
-                          : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                      }`}
-                    >
-                      {config.label}
-                    </button>
-                  ))}
+                <div className="text-[10px] text-gray-500 font-medium whitespace-nowrap">
+                  {formatDate(day.date)}
                 </div>
               </div>
-
-              {/* Ações */}
-              <div className="flex gap-3 pt-4 border-t">
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="flex-1 py-3 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#1b4332] transition font-medium flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  <CheckCircle className="w-4 h-4" />
-                  {saving
-                    ? 'Salvando...'
-                    : editingAgent
-                      ? 'Atualizar'
-                      : 'Criar'}
-                </button>
-                <button
-                  onClick={() => setShowModal(false)}
-                  disabled={saving}
-                  className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200 transition font-medium flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  <XCircle className="w-4 h-4" />
-                  Cancelar
-                </button>
-              </div>
-            </div>
+            ))}
           </div>
+        ) : (
+          <div className="text-center py-12">
+            <BarChart3 className="w-12 h-12 text-gray-300 mx-auto mb-2" />
+            <p className="text-gray-500">Sem dados no período selecionado</p>
+          </div>
+        )}
+      </div>
+
+      {/* Top produtos */}
+      <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold text-[#2d6a4f] flex items-center gap-2">
+            <Package className="w-5 h-5" />
+            Produtos Mais Vendidos
+          </h2>
         </div>
-      )}
+        {topProducts.length > 0 ? (
+          <div className="space-y-3">
+            {topProducts.map((product, index) => (
+              <div
+                key={product.product_id}
+                className="flex items-center gap-4 p-3 hover:bg-gray-50 rounded-xl transition border border-transparent hover:border-gray-100"
+              >
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm ${
+                  index === 0 ? 'bg-amber-100 text-amber-700' :
+                  index === 1 ? 'bg-gray-200 text-gray-700' :
+                  index === 2 ? 'bg-orange-100 text-orange-700' :
+                  'bg-gray-50 text-gray-500'
+                }`}>
+                  {index + 1}
+                </div>
+                <div className="flex-1">
+                  <p className="font-semibold text-gray-800">
+                    {product.product_name}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {product.quantity} unidades vendidas
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="font-bold text-[#2d6a4f]">
+                    {formatCurrency(product.revenue)}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-8 border-2 border-dashed border-gray-100 rounded-xl">
+            <FileText className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+            <p className="text-gray-500 text-sm">Sem dados de vendas no período</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

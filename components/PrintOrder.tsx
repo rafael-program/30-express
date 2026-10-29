@@ -2,6 +2,7 @@
 'use client';
 
 import { useRef } from 'react';
+import Image from 'next/image';
 import { useReactToPrint } from 'react-to-print';
 import { Printer, X } from 'lucide-react';
 
@@ -63,257 +64,269 @@ const formatOrderNumber = (id: string) => {
   return `#${id.slice(0, 8).toUpperCase()}`;
 };
 
+// URL do QR Code
+const getQrCodeUrl = (orderId: string) => {
+  return `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${formatOrderNumber(orderId)}`;
+};
+
 // ============================================================
-// VIA 1 — EQUIPE DE COMPRAS
+// VIA 1 — EQUIPE DE COMPRAS (Com QR Code)
 // ============================================================
 function ViaCompras({ order }: { order: Order }) {
   return (
-    <div className="p-4 text-xs text-black">
-      <div className="flex justify-between items-start mb-3">
-        <div>
-          <h1 className="text-lg font-bold">MERCADO DO 30</h1>
-          <p className="text-xs">30 Express — Via 1: EQUIPE DE COMPRAS</p>
-        </div>
-        <div className="text-right">
-          <p className="font-bold text-base">{formatOrderNumber(order.id)}</p>
-          <p className="text-xs">{formatDate(order.created_at)}</p>
-        </div>
+    <div className="p-4 text-[11px] text-black font-sans bg-white">
+      {/* Cabeçalho */}
+      <div className="text-center mb-3">
+        <h1 className="text-base font-bold uppercase tracking-widest border-b border-black pb-1 inline-block">30 Express</h1>
+        <p className="text-[10px] font-semibold mt-1 text-gray-700">MERCADO DO 30</p>
+        <p className="text-[9px] uppercase tracking-wider text-gray-500">Via: Equipe de Compras</p>
       </div>
 
-      <div className="mb-3">
-        <p className="font-bold">CLIENTE:</p>
-        <p>{order.customer_name}</p>
-        <p>Tel: {order.customer_phone}</p>
+      {/* Identificação do Pedido */}
+      <div className="border-y border-dashed border-black py-1.5 mb-3 text-center bg-gray-50">
+        <p className="font-bold text-sm">{formatOrderNumber(order.id)}</p>
+        <p className="text-[9px] text-gray-600">{formatDate(order.created_at)}</p>
       </div>
 
+      {/* Dados do Cliente */}
       <div className="mb-3">
-        <p className="font-bold">ENDEREÇO DE ENTREGA:</p>
-        <p>{order.delivery_address}</p>
+        <p className="font-bold text-[9px] uppercase tracking-wider mb-0.5">Cliente:</p>
+        <p className="font-semibold text-[11px] leading-tight">{order.customer_name}</p>
+        <p className="text-[10px] text-gray-700">Tel: {order.customer_phone}</p>
+      </div>
+
+      {/* Endereço */}
+      <div className="mb-3">
+        <p className="font-bold text-[9px] uppercase tracking-wider mb-0.5">Endereço de Entrega:</p>
+        <p className="leading-tight text-[10px]">{order.delivery_address}</p>
         {order.delivery_lat && order.delivery_lng && (
-          <p className="text-xs">
-            GPS: {order.delivery_lat.toFixed(5)},{' '}
-            {order.delivery_lng.toFixed(5)}
+          <p className="text-[8px] text-gray-500 mt-0.5">
+            GPS: {order.delivery_lat.toFixed(5)}, {order.delivery_lng.toFixed(5)}
           </p>
         )}
       </div>
 
-      <table className="w-full border-collapse border border-black text-xs mb-3">
+      {/* Itens */}
+      <table className="w-full border-collapse text-[10px] mb-3">
         <thead>
-          <tr className="bg-gray-200">
-            <th className="border border-black px-1 py-1 text-left">Item</th>
-            <th className="border border-black px-1 py-1 text-center w-12">
-              Qtd
-            </th>
-            <th className="border border-black px-1 py-1 text-right w-20">
-              Preço
-            </th>
-            <th className="border border-black px-1 py-1 text-right w-24">
-              Total
-            </th>
+          <tr className="border-b border-black">
+            <th className="text-left py-1 font-bold">Item</th>
+            <th className="text-center w-8 font-bold">Qtd</th>
+            <th className="text-right w-16 font-bold">Total</th>
           </tr>
         </thead>
         <tbody>
           {order.items?.map((item) => (
-            <tr key={item.id}>
-              <td className="border border-black px-1 py-1">
-                {item.product_name}
-              </td>
-              <td className="border border-black px-1 py-1 text-center">
-                {item.quantity}
-              </td>
-              <td className="border border-black px-1 py-1 text-right">
-                {formatCurrency(item.unit_price)}
-              </td>
-              <td className="border border-black px-1 py-1 text-right">
-                {formatCurrency(item.total_price)}
-              </td>
+            <tr key={item.id} className="border-b border-gray-200 border-dashed">
+              <td className="py-1 pr-1 leading-tight">{item.product_name}</td>
+              <td className="text-center">{item.quantity}</td>
+              <td className="text-right">{formatCurrency(item.total_price)}</td>
             </tr>
           ))}
         </tbody>
       </table>
 
-      <div className="flex justify-end">
-        <div className="w-56">
-          <div className="flex justify-between text-xs">
-            <span>Subtotal:</span>
-            <span>{formatCurrency(order.subtotal)}</span>
-          </div>
-          <div className="flex justify-between text-xs">
-            <span>Taxa de Entrega:</span>
-            <span>{formatCurrency(order.delivery_fee)}</span>
-          </div>
-          <div className="flex justify-between font-bold text-sm border-t border-black mt-1 pt-1">
-            <span>TOTAL:</span>
-            <span>{formatCurrency(order.total_amount)}</span>
-          </div>
-          <div className="flex justify-between text-xs mt-1">
-            <span>Pagamento:</span>
-            <span className="capitalize">
-              {order.payment_method || 'Não informado'}
-            </span>
-          </div>
+      {/* Totais */}
+      <div className="border-t border-black pt-1.5 space-y-0.5">
+        <div className="flex justify-between text-[10px]">
+          <span className="text-gray-600">Subtotal:</span>
+          <span>{formatCurrency(order.subtotal)}</span>
+        </div>
+        <div className="flex justify-between text-[10px]">
+          <span className="text-gray-600">Taxa Entrega:</span>
+          <span>{formatCurrency(order.delivery_fee)}</span>
+        </div>
+        <div className="flex justify-between font-bold text-sm mt-1 pt-1 border-t border-black border-dotted">
+          <span>TOTAL:</span>
+          <span>{formatCurrency(order.total_amount)}</span>
+        </div>
+        <div className="flex justify-between text-[9px] mt-1 text-gray-700">
+          <span>Pagamento:</span>
+          <span className="uppercase">{order.payment_method}</span>
         </div>
       </div>
 
-      <div className="mt-6 pt-2 text-xs">
-        <p>Preparado por: _________________________</p>
+      {/* Assinatura e QR */}
+      <div className="mt-6 pt-2 border-t border-black border-dashed flex justify-between items-end">
+        <div className="w-3/5">
+          <p className="text-[9px] uppercase tracking-wider font-bold mb-4">Preparado por:</p>
+          <div className="border-t border-black w-full mb-1"></div>
+          <p className="text-[8px] text-gray-500">Assinatura</p>
+        </div>
+        <div className="text-center">
+           <Image 
+             src={getQrCodeUrl(order.id)} 
+             alt="QR Code" 
+             width={60} 
+             height={60} 
+             unoptimized 
+             className="border border-gray-200 p-0.5"
+           />
+           <p className="text-[7px] text-gray-500 mt-0.5 font-mono">Rastreio</p>
+        </div>
       </div>
     </div>
   );
 }
 
 // ============================================================
-// VIA 2 — CLIENTE (com assinatura)
+// VIA 2 — CLIENTE (Com Espaço Generoso para Assinatura)
 // ============================================================
 function ViaCliente({ order }: { order: Order }) {
   return (
-    <div className="p-4 text-xs text-black">
-      <div className="flex justify-between items-start mb-3">
-        <div>
-          <h1 className="text-lg font-bold">MERCADO DO 30</h1>
-          <p className="text-xs">30 Express — Via 2: CLIENTE</p>
-        </div>
-        <div className="text-right">
-          <p className="font-bold text-base">{formatOrderNumber(order.id)}</p>
-          <p className="text-xs">{formatDate(order.created_at)}</p>
-        </div>
+    <div className="p-4 text-[11px] text-black font-sans bg-white">
+      {/* Cabeçalho */}
+      <div className="text-center mb-3">
+        <h1 className="text-base font-bold uppercase tracking-widest border-b border-black pb-1 inline-block">30 Express</h1>
+        <p className="text-[10px] font-semibold mt-1 text-gray-700">MERCADO DO 30</p>
+        <p className="text-[9px] uppercase tracking-wider text-gray-500">Via: Cliente</p>
       </div>
 
-      <div className="mb-2">
-        <p className="font-bold">CLIENTE:</p>
-        <p>{order.customer_name}</p>
-        <p>Tel: {order.customer_phone}</p>
+      {/* Identificação do Pedido */}
+      <div className="border-y border-dashed border-black py-1.5 mb-3 text-center bg-gray-50">
+        <p className="font-bold text-sm">{formatOrderNumber(order.id)}</p>
+        <p className="text-[9px] text-gray-600">{formatDate(order.created_at)}</p>
       </div>
 
-      <div className="mb-2">
-        <p className="font-bold">ENDEREÇO:</p>
-        <p>{order.delivery_address}</p>
+      {/* Dados do Cliente */}
+      <div className="mb-3">
+        <p className="font-bold text-[9px] uppercase tracking-wider mb-0.5">Cliente:</p>
+        <p className="font-semibold text-[11px] leading-tight">{order.customer_name}</p>
+        <p className="text-[10px] text-gray-700">Tel: {order.customer_phone}</p>
       </div>
 
-      <table className="w-full border-collapse border border-black text-xs mb-3">
+      {/* Endereço */}
+      <div className="mb-3">
+        <p className="font-bold text-[9px] uppercase tracking-wider mb-0.5">Endereço:</p>
+        <p className="leading-tight text-[10px]">{order.delivery_address}</p>
+      </div>
+
+      {/* Itens */}
+      <table className="w-full border-collapse text-[10px] mb-3">
         <thead>
-          <tr className="bg-gray-200">
-            <th className="border border-black px-1 py-1 text-left">Item</th>
-            <th className="border border-black px-1 py-1 text-center w-12">
-              Qtd
-            </th>
-            <th className="border border-black px-1 py-1 text-right w-24">
-              Total
-            </th>
+          <tr className="border-b border-black">
+            <th className="text-left py-1 font-bold">Item</th>
+            <th className="text-center w-8 font-bold">Qtd</th>
+            <th className="text-right w-16 font-bold">Total</th>
           </tr>
         </thead>
         <tbody>
           {order.items?.map((item) => (
-            <tr key={item.id}>
-              <td className="border border-black px-1 py-1">
-                {item.product_name}
-              </td>
-              <td className="border border-black px-1 py-1 text-center">
-                {item.quantity}
-              </td>
-              <td className="border border-black px-1 py-1 text-right">
-                {formatCurrency(item.total_price)}
-              </td>
+            <tr key={item.id} className="border-b border-gray-200 border-dashed">
+              <td className="py-1 pr-1 leading-tight">{item.product_name}</td>
+              <td className="text-center">{item.quantity}</td>
+              <td className="text-right">{formatCurrency(item.total_price)}</td>
             </tr>
           ))}
         </tbody>
       </table>
 
-      <div className="flex justify-end mb-8">
-        <div className="w-56">
-          <div className="flex justify-between font-bold text-sm">
-            <span>TOTAL A PAGAR:</span>
-            <span>{formatCurrency(order.total_amount)}</span>
-          </div>
-          <div className="flex justify-between text-xs">
-            <span>Pagamento:</span>
-            <span className="capitalize">
-              {order.payment_method || 'Não informado'}
-            </span>
-          </div>
+      {/* Totais */}
+      <div className="border-t border-black pt-1.5">
+        <div className="flex justify-between font-bold text-sm">
+          <span>TOTAL A PAGAR:</span>
+          <span>{formatCurrency(order.total_amount)}</span>
+        </div>
+        <div className="flex justify-between text-[9px] mt-1 text-gray-700">
+          <span>Pagamento:</span>
+          <span className="uppercase">{order.payment_method}</span>
         </div>
       </div>
 
-      <div className="mt-12 pt-4">
-        <div className="border-t border-black w-64 mb-1"></div>
-        <p className="text-xs">Assinatura do Cliente</p>
-        <p className="text-xs mt-1">Data: ____ / ____ / ________</p>
+      {/* Assinatura do Cliente - Área Generosa */}
+      <div className="mt-12 pt-4 border-t border-black border-dashed">
+        <p className="text-[9px] uppercase tracking-wider font-bold text-center mb-8">Assinatura do Cliente</p>
+        <div className="border-t border-black w-4/5 mx-auto mb-1"></div>
+        <p className="text-[8px] text-gray-500 text-center">Assinatura</p>
+        <p className="text-[8px] text-gray-500 text-center mt-2">Data: ____ / ____ / ________</p>
       </div>
     </div>
   );
 }
 
 // ============================================================
-// VIA 3 — ADMINISTRATIVO (com assinatura entregador)
+// VIA 3 — ADMINISTRATIVO (Com Espaço para Assinatura do Entregador)
 // ============================================================
 function ViaAdministrativo({ order }: { order: Order }) {
   return (
-    <div className="p-4 text-xs text-black">
-      <div className="flex justify-between items-start mb-3">
+    <div className="p-4 text-[11px] text-black font-sans bg-white">
+      {/* Cabeçalho */}
+      <div className="text-center mb-3">
+        <h1 className="text-base font-bold uppercase tracking-widest border-b border-black pb-1 inline-block">30 Express</h1>
+        <p className="text-[10px] font-semibold mt-1 text-gray-700">MERCADO DO 30</p>
+        <p className="text-[9px] uppercase tracking-wider text-gray-500">Via: Administrativo</p>
+      </div>
+
+      {/* Identificação do Pedido */}
+      <div className="border-y border-dashed border-black py-1.5 mb-3 text-center bg-gray-50">
+        <p className="font-bold text-sm">{formatOrderNumber(order.id)}</p>
+        <p className="text-[9px] text-gray-600">{formatDate(order.created_at)}</p>
+      </div>
+
+      {/* Dados do Cliente */}
+      <div className="mb-3">
+        <p className="font-bold text-[9px] uppercase tracking-wider mb-0.5">Cliente:</p>
+        <p className="font-semibold text-[11px] leading-tight">{order.customer_name}</p>
+        <p className="text-[10px] text-gray-700">Tel: {order.customer_phone}</p>
+      </div>
+
+      {/* Endereço */}
+      <div className="mb-3">
+        <p className="font-bold text-[9px] uppercase tracking-wider mb-0.5">Endereço:</p>
+        <p className="leading-tight text-[10px]">{order.delivery_address}</p>
+      </div>
+
+      {/* Status e Total */}
+      <div className="flex justify-between text-[11px] mb-4 border-y border-black border-dotted py-1.5 bg-gray-50">
         <div>
-          <h1 className="text-lg font-bold">MERCADO DO 30</h1>
-          <p className="text-xs">30 Express — Via 3: ADMINISTRATIVO</p>
+          <p className="text-[9px] text-gray-500 uppercase tracking-wider">Status do Pedido:</p>
+          <p className="font-bold capitalize text-[11px]">{order.status}</p>
         </div>
         <div className="text-right">
-          <p className="font-bold text-base">{formatOrderNumber(order.id)}</p>
-          <p className="text-xs">{formatDate(order.created_at)}</p>
+          <p className="text-[9px] text-gray-500 uppercase tracking-wider">Total:</p>
+          <p className="font-bold text-sm">{formatCurrency(order.total_amount)}</p>
         </div>
       </div>
 
-      <div className="mb-2">
-        <p className="font-bold">CLIENTE:</p>
-        <p>{order.customer_name}</p>
-        <p>Tel: {order.customer_phone}</p>
-      </div>
-
-      <div className="mb-2">
-        <p className="font-bold">ENDEREÇO:</p>
-        <p>{order.delivery_address}</p>
-      </div>
-
-      <div className="flex justify-between text-sm mb-8">
-        <div>
-          <p className="text-xs">Status do Pedido:</p>
-          <p className="font-bold capitalize">{order.status}</p>
+      {/* Assinatura do Entregador + QR Code */}
+      <div className="mt-10 pt-4 border-t border-black border-dashed flex justify-between items-end">
+        <div className="w-3/5">
+          <p className="text-[9px] uppercase tracking-wider font-bold mb-8">Assinatura do Entregador</p>
+          <div className="border-t border-black w-full mb-1"></div>
+          <p className="text-[8px] text-gray-500">Assinatura</p>
+          <p className="text-[8px] text-gray-500 mt-2">Data: ____ / ____ / ________</p>
         </div>
-        <div className="text-right">
-          <p className="text-xs">Total:</p>
-          <p className="font-bold text-base">
-            {formatCurrency(order.total_amount)}
-          </p>
+        <div className="text-center">
+           <Image 
+             src={getQrCodeUrl(order.id)} 
+             alt="QR Code" 
+             width={60} 
+             height={60} 
+             unoptimized 
+             className="border border-gray-200 p-0.5"
+           />
+           <p className="text-[7px] text-gray-500 mt-0.5 font-mono">Rastreio</p>
         </div>
-      </div>
-
-      <div className="mt-12 pt-4">
-        <div className="border-t border-black w-64 mb-1"></div>
-        <p className="text-xs">Assinatura do Entregador</p>
-        <p className="text-xs mt-1">Data: ____ / ____ / ________</p>
       </div>
     </div>
   );
 }
 
 // ============================================================
-// CONTEÚDO COMPLETO (3 vias)
+// CONTEÚDO COMPLETO
 // ============================================================
 function PrintContent({ order }: { order: Order }) {
   return (
     <div className="bg-white">
-      <div className="mb-2 pb-2 border-b-2 border-dashed border-black">
+      {/* Força quebra de página após cada via na impressão */}
+      <div className="page-break-after">
         <ViaCompras order={order} />
       </div>
-
-      <div className="mb-2 pb-2 border-b-2 border-dashed border-black">
+      <div className="page-break-after">
         <ViaCliente order={order} />
       </div>
-
       <div>
         <ViaAdministrativo order={order} />
-      </div>
-
-      <div className="mt-4 pt-3 border-t border-black text-center text-xs text-gray-600">
-        <p>30 Express — Mercado do 30 | Obrigado pela preferência!</p>
-        <p>www.30express.ao</p>
       </div>
     </div>
   );
@@ -329,7 +342,6 @@ export default function PrintOrder({
 }: PrintOrderProps) {
   const componentRef = useRef<HTMLDivElement>(null);
 
-  // ✅ react-to-print v3: contentRef + onBeforePrint
   const handlePrint = useReactToPrint({
     contentRef: componentRef,
     documentTitle: `Pedido-${formatOrderNumber(order.id)}`,
@@ -341,7 +353,7 @@ export default function PrintOrder({
     },
     onPrintError: (errorLocation, error) => {
       console.error('❌ Erro na impressão:', errorLocation, error);
-      alert('Erro ao imprimir. Verifique se a impressora está conectada.');
+      alert('Erro ao imprimir. Verifique a impressora.');
     },
   });
 
@@ -355,28 +367,21 @@ export default function PrintOrder({
           <div className="flex items-center gap-2">
             <Printer className="w-6 h-6 text-[#2d6a4f]" />
             <div>
-              <h2 className="text-xl font-bold text-[#2d6a4f]">
-                Imprimir Pedido
-              </h2>
-              <p className="text-xs text-gray-500">
-                3 vias: Compras, Cliente e Administrativo
-              </p>
+              <h2 className="text-xl font-bold text-[#2d6a4f]">Imprimir Pedido</h2>
+              <p className="text-xs text-gray-500">3 vias (80mm Térmica)</p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-full transition"
-          >
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Preview */}
-        <div className="flex-1 overflow-y-auto p-4 bg-gray-100">
+        <div className="flex-1 overflow-y-auto p-4 bg-gray-100 flex justify-center">
           <div
             ref={componentRef}
-            className="bg-white shadow-lg mx-auto"
-            style={{ width: '210mm', minHeight: '297mm' }}
+            className="bg-white shadow-lg"
+            style={{ width: '80mm', minHeight: '100mm' }}
           >
             <PrintContent order={order} />
           </div>
@@ -399,6 +404,22 @@ export default function PrintOrder({
           </button>
         </div>
       </div>
+
+      {/* CSS de Impressão para Impressora Térmica */}
+      <style jsx global>{`
+        @media print {
+          @page {
+            size: 80mm auto;
+            margin: 0;
+          }
+          body * {
+            visibility: hidden;
+          }
+          .page-break-after {
+            page-break-after: always;
+          }
+        }
+      `}</style>
     </div>
   );
 }

@@ -1,6 +1,13 @@
 // app/layout.tsx
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
+import { Plus_Jakarta_Sans } from 'next/font/google';
 import './globals.css';
+
+const jakarta = Plus_Jakarta_Sans({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-sans',
+});
 
 export const metadata: Metadata = {
   title: '30 Express | Alimentos Saudáveis & Naturais',
@@ -12,17 +19,23 @@ export const metadata: Metadata = {
   },
 };
 
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: '#1b4332',
+};
+
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <html lang="pt-AO" className="scroll-smooth">
-      <head>
-        <link rel="icon" href="/logo-icon.png" />
-      </head>
-      <body className="antialiased selection:bg-[#52b788]/30 selection:text-[#1b4332]">
+    <html lang="pt-AO" className={`scroll-smooth ${jakarta.variable}`}>
+      <body
+        className="antialiased font-sans selection:bg-[#52b788]/30 selection:text-[#1b4332]"
+        style={{ fontFamily: 'var(--font-sans), system-ui, sans-serif' }}
+      >
         {children}
       </body>
     </html>

@@ -2,7 +2,6 @@
 'use client';
 
 import { useRef } from 'react';
-import Image from 'next/image';
 import { useReactToPrint } from 'react-to-print';
 import { Printer, X } from 'lucide-react';
 
@@ -66,7 +65,7 @@ const formatOrderNumber = (id: string) => {
 
 // URL do QR Code
 const getQrCodeUrl = (orderId: string) => {
-  return `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${formatOrderNumber(orderId)}`;
+  return `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${formatOrderNumber(orderId)}`;
 };
 
 // ============================================================
@@ -154,12 +153,12 @@ function ViaCompras({ order }: { order: Order }) {
           <p className="text-[8px] text-gray-500">Assinatura</p>
         </div>
         <div className="text-center">
-           <Image 
+           {/* ✅ Usando img normal para evitar bloqueio do Next.js */}
+           <img 
              src={getQrCodeUrl(order.id)} 
              alt="QR Code" 
              width={60} 
              height={60} 
-             unoptimized 
              className="border border-gray-200 p-0.5"
            />
            <p className="text-[7px] text-gray-500 mt-0.5 font-mono">Rastreio</p>
@@ -297,12 +296,11 @@ function ViaAdministrativo({ order }: { order: Order }) {
           <p className="text-[8px] text-gray-500 mt-2">Data: ____ / ____ / ________</p>
         </div>
         <div className="text-center">
-           <Image 
+           <img 
              src={getQrCodeUrl(order.id)} 
              alt="QR Code" 
              width={60} 
              height={60} 
-             unoptimized 
              className="border border-gray-200 p-0.5"
            />
            <p className="text-[7px] text-gray-500 mt-0.5 font-mono">Rastreio</p>
@@ -318,7 +316,6 @@ function ViaAdministrativo({ order }: { order: Order }) {
 function PrintContent({ order }: { order: Order }) {
   return (
     <div className="bg-white">
-      {/* Força quebra de página após cada via na impressão */}
       <div className="page-break-after">
         <ViaCompras order={order} />
       </div>
@@ -343,19 +340,22 @@ export default function PrintOrder({
   const componentRef = useRef<HTMLDivElement>(null);
 
   const handlePrint = useReactToPrint({
-    contentRef: componentRef,
-    documentTitle: `Pedido-${formatOrderNumber(order.id)}`,
-    onBeforePrint: () => {
-      return Promise.resolve();
-    },
-    onAfterPrint: () => {
-      console.log('✅ Impressão concluída');
-    },
-    onPrintError: (errorLocation, error) => {
-      console.error('❌ Erro na impressão:', errorLocation, error);
-      alert('Erro ao imprimir. Verifique a impressora.');
-    },
-  });
+  contentRef: componentRef,
+  documentTitle: `Pedido-${formatOrderNumber(order.id)}`,
+  onBeforePrint: () => {
+    // Atrasa 1 segundo para garantir que o QR Code carregue
+    return new Promise((resolve) => {
+      setTimeout(resolve, 1000);
+    });
+  },
+  onAfterPrint: () => {
+    console.log('✅ Impressão concluída');
+  },
+  onPrintError: (errorLocation, error) => {
+    console.error('❌ Erro na impressão:', errorLocation, error);
+    alert('Erro ao imprimir. Verifique a impressora.');
+  },
+});
 
   if (!isOpen) return null;
 
@@ -405,16 +405,30 @@ export default function PrintOrder({
         </div>
       </div>
 
-      {/* CSS de Impressão para Impressora Térmica */}
+      {/* CSS de Impressão Corrigido */}
       <style jsx global>{`
         @media print {
           @page {
             size: 80mm auto;
             margin: 0;
           }
-          body * {
+          
+          /* Esconde o body original, mas deixa o portal de impressão visível */
+          body {
             visibility: hidden;
           }
+
+          /* O react-to-print cria um container temporário, precisamos garantir que ele apareça */
+          body > div:has(.page-break-after) {
+            visibility: visible;
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 80mm;
+            margin: 0;
+            padding: 0;
+          }
+
           .page-break-after {
             page-break-after: always;
           }

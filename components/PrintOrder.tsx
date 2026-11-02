@@ -65,14 +65,16 @@ const formatOrderNumber = (id: string) => {
 };
 
 // ============================================================
-// DIVISOR DE CORTE (Tesoura)
+// DIVISOR DE CORTE
 // ============================================================
 function CutLine() {
   return (
     <div className="flex items-center justify-center py-2 my-2 text-black">
       <Scissors className="w-4 h-4" />
       <div className="flex-1 border-t border-dashed border-black mx-2"></div>
-      <span className="text-[9px] uppercase tracking-widest font-mono">Corte aqui</span>
+      <span className="text-[9px] uppercase tracking-widest font-mono">
+        Corte aqui
+      </span>
       <div className="flex-1 border-t border-dashed border-black mx-2"></div>
       <Scissors className="w-4 h-4" />
     </div>
@@ -86,35 +88,53 @@ function ViaCompras({ order }: { order: Order }) {
   return (
     <div className="p-4 text-[11px] text-black font-sans bg-white">
       <div className="text-center mb-3">
-        <h1 className="text-base font-bold uppercase tracking-widest border-b border-black pb-1 inline-block">30 Express</h1>
-        <p className="text-[10px] font-semibold mt-1 text-gray-700">MERCADO DO 30</p>
-        <p className="text-[9px] uppercase tracking-wider text-gray-500">Via: Equipe de Compras</p>
+        <h1 className="text-base font-bold uppercase tracking-widest border-b border-black pb-1 inline-block">
+          30 Express
+        </h1>
+        <p className="text-[10px] font-semibold mt-1 text-gray-700">
+          MERCADO DO 30
+        </p>
+        <p className="text-[9px] uppercase tracking-wider text-gray-500">
+          Via: Equipe de Compras
+        </p>
       </div>
 
       <div className="border-y border-dashed border-black py-1.5 mb-3 text-center bg-gray-50">
         <p className="font-bold text-sm">{formatOrderNumber(order.id)}</p>
-        <p className="text-[9px] text-gray-600">{formatDate(order.created_at)}</p>
+        <p className="text-[9px] text-gray-600">
+          {formatDate(order.created_at)}
+        </p>
       </div>
 
       <div className="mb-3">
-        <p className="font-bold text-[9px] uppercase tracking-wider mb-0.5">Cliente:</p>
-        <p className="font-semibold text-[11px] leading-tight">{order.customer_name}</p>
+        <p className="font-bold text-[9px] uppercase tracking-wider mb-0.5">
+          Cliente:
+        </p>
+        <p className="font-semibold text-[11px] leading-tight">
+          {order.customer_name}
+        </p>
         <p className="text-[10px] text-gray-700">Tel: {order.customer_phone}</p>
       </div>
 
       <div className="mb-3">
-        <p className="font-bold text-[9px] uppercase tracking-wider mb-0.5">Endereço de Entrega:</p>
+        <p className="font-bold text-[9px] uppercase tracking-wider mb-0.5">
+          Endereço de Entrega:
+        </p>
         <p className="leading-tight text-[10px]">{order.delivery_address}</p>
         {order.delivery_lat && order.delivery_lng && (
-          <p className="text-[8px] text-gray-500 mt-0.5">GPS: {order.delivery_lat.toFixed(5)}, {order.delivery_lng.toFixed(5)}</p>
+          <p className="text-[8px] text-gray-500 mt-0.5">
+            GPS: {order.delivery_lat.toFixed(5)}, {order.delivery_lng.toFixed(5)}
+          </p>
         )}
       </div>
 
-      <table className="w-full border-collapse text-[10px] mb-3">
+      {/* ✅ Tabela com 4 colunas: Item | Qtd | Preço | Total */}
+      <table className="w-full border-collapse text-[9px] mb-3">
         <thead>
           <tr className="border-b border-black">
             <th className="text-left py-1 font-bold">Item</th>
-            <th className="text-center w-8 font-bold">Qtd</th>
+            <th className="text-center w-7 font-bold">Qtd</th>
+            <th className="text-right w-14 font-bold">Preço</th>
             <th className="text-right w-16 font-bold">Total</th>
           </tr>
         </thead>
@@ -123,30 +143,47 @@ function ViaCompras({ order }: { order: Order }) {
             <tr key={item.id} className="border-b border-gray-200 border-dashed">
               <td className="py-1 pr-1 leading-tight">{item.product_name}</td>
               <td className="text-center">{item.quantity}</td>
-              <td className="text-right">{formatCurrency(item.total_price)}</td>
+              <td className="text-right">{formatCurrency(item.unit_price)}</td>
+              <td className="text-right font-semibold">
+                {formatCurrency(item.total_price)}
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
 
       <div className="border-t border-black pt-1.5 space-y-0.5">
-        <div className="flex justify-between text-[10px]"><span className="text-gray-600">Subtotal:</span><span>{formatCurrency(order.subtotal)}</span></div>
-        <div className="flex justify-between text-[10px]"><span className="text-gray-600">Taxa Entrega:</span><span>{formatCurrency(order.delivery_fee)}</span></div>
-        <div className="flex justify-between font-bold text-sm mt-1 pt-1 border-t border-black border-dotted"><span>TOTAL:</span><span>{formatCurrency(order.total_amount)}</span></div>
-        <div className="flex justify-between text-[9px] mt-1 text-gray-700"><span>Pagamento:</span><span className="uppercase">{order.payment_method}</span></div>
+        <div className="flex justify-between text-[10px]">
+          <span className="text-gray-600">Subtotal:</span>
+          <span>{formatCurrency(order.subtotal)}</span>
+        </div>
+        <div className="flex justify-between text-[10px]">
+          <span className="text-gray-600">Taxa Entrega:</span>
+          <span>{formatCurrency(order.delivery_fee)}</span>
+        </div>
+        <div className="flex justify-between font-bold text-sm mt-1 pt-1 border-t border-black border-dotted">
+          <span>TOTAL:</span>
+          <span>{formatCurrency(order.total_amount)}</span>
+        </div>
+        <div className="flex justify-between text-[9px] mt-1 text-gray-700">
+          <span>Pagamento:</span>
+          <span className="uppercase">{order.payment_method}</span>
+        </div>
       </div>
 
       <div className="mt-6 pt-2 border-t border-black border-dashed flex justify-between items-end">
         <div className="w-3/5">
-          <p className="text-[9px] uppercase tracking-wider font-bold mb-4">Preparado por:</p>
+          <p className="text-[9px] uppercase tracking-wider font-bold mb-4">
+            Preparado por:
+          </p>
           <div className="border-t border-black w-full mb-1"></div>
           <p className="text-[8px] text-gray-500">Assinatura</p>
         </div>
         <div className="text-center">
-           <div className="bg-white p-1 border border-gray-200 inline-block">
-             <QRCode value={formatOrderNumber(order.id)} size={60} />
-           </div>
-           <p className="text-[7px] text-gray-500 mt-0.5 font-mono">Rastreio</p>
+          <div className="bg-white p-1 border border-gray-200 inline-block">
+            <QRCode value={formatOrderNumber(order.id)} size={60} />
+          </div>
+          <p className="text-[7px] text-gray-500 mt-0.5 font-mono">Rastreio</p>
         </div>
       </div>
     </div>
@@ -160,32 +197,48 @@ function ViaCliente({ order }: { order: Order }) {
   return (
     <div className="p-4 text-[11px] text-black font-sans bg-white">
       <div className="text-center mb-3">
-        <h1 className="text-base font-bold uppercase tracking-widest border-b border-black pb-1 inline-block">30 Express</h1>
-        <p className="text-[10px] font-semibold mt-1 text-gray-700">MERCADO DO 30</p>
-        <p className="text-[9px] uppercase tracking-wider text-gray-500">Via: Cliente</p>
+        <h1 className="text-base font-bold uppercase tracking-widest border-b border-black pb-1 inline-block">
+          30 Express
+        </h1>
+        <p className="text-[10px] font-semibold mt-1 text-gray-700">
+          MERCADO DO 30
+        </p>
+        <p className="text-[9px] uppercase tracking-wider text-gray-500">
+          Via: Cliente
+        </p>
       </div>
 
       <div className="border-y border-dashed border-black py-1.5 mb-3 text-center bg-gray-50">
         <p className="font-bold text-sm">{formatOrderNumber(order.id)}</p>
-        <p className="text-[9px] text-gray-600">{formatDate(order.created_at)}</p>
+        <p className="text-[9px] text-gray-600">
+          {formatDate(order.created_at)}
+        </p>
       </div>
 
       <div className="mb-3">
-        <p className="font-bold text-[9px] uppercase tracking-wider mb-0.5">Cliente:</p>
-        <p className="font-semibold text-[11px] leading-tight">{order.customer_name}</p>
+        <p className="font-bold text-[9px] uppercase tracking-wider mb-0.5">
+          Cliente:
+        </p>
+        <p className="font-semibold text-[11px] leading-tight">
+          {order.customer_name}
+        </p>
         <p className="text-[10px] text-gray-700">Tel: {order.customer_phone}</p>
       </div>
 
       <div className="mb-3">
-        <p className="font-bold text-[9px] uppercase tracking-wider mb-0.5">Endereço:</p>
+        <p className="font-bold text-[9px] uppercase tracking-wider mb-0.5">
+          Endereço:
+        </p>
         <p className="leading-tight text-[10px]">{order.delivery_address}</p>
       </div>
 
-      <table className="w-full border-collapse text-[10px] mb-3">
+      {/* ✅ Tabela com 4 colunas: Item | Qtd | Preço | Total */}
+      <table className="w-full border-collapse text-[9px] mb-3">
         <thead>
           <tr className="border-b border-black">
             <th className="text-left py-1 font-bold">Item</th>
-            <th className="text-center w-8 font-bold">Qtd</th>
+            <th className="text-center w-7 font-bold">Qtd</th>
+            <th className="text-right w-14 font-bold">Preço</th>
             <th className="text-right w-16 font-bold">Total</th>
           </tr>
         </thead>
@@ -194,7 +247,10 @@ function ViaCliente({ order }: { order: Order }) {
             <tr key={item.id} className="border-b border-gray-200 border-dashed">
               <td className="py-1 pr-1 leading-tight">{item.product_name}</td>
               <td className="text-center">{item.quantity}</td>
-              <td className="text-right">{formatCurrency(item.total_price)}</td>
+              <td className="text-right">{formatCurrency(item.unit_price)}</td>
+              <td className="text-right font-semibold">
+                {formatCurrency(item.total_price)}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -212,10 +268,14 @@ function ViaCliente({ order }: { order: Order }) {
       </div>
 
       <div className="mt-12 pt-4 border-t border-black border-dashed">
-        <p className="text-[9px] uppercase tracking-wider font-bold text-center mb-8">Assinatura do Cliente</p>
+        <p className="text-[9px] uppercase tracking-wider font-bold text-center mb-8">
+          Assinatura do Cliente
+        </p>
         <div className="border-t border-black w-4/5 mx-auto mb-1"></div>
         <p className="text-[8px] text-gray-500 text-center">Assinatura</p>
-        <p className="text-[8px] text-gray-500 text-center mt-2">Data: ____ / ____ / ________</p>
+        <p className="text-[8px] text-gray-500 text-center mt-2">
+          Data: ____ / ____ / ________
+        </p>
       </div>
     </div>
   );
@@ -228,50 +288,98 @@ function ViaAdministrativo({ order }: { order: Order }) {
   return (
     <div className="p-4 text-[11px] text-black font-sans bg-white">
       <div className="text-center mb-3">
-        <h1 className="text-base font-bold uppercase tracking-widest border-b border-black pb-1 inline-block">30 Express</h1>
-        <p className="text-[10px] font-semibold mt-1 text-gray-700">MERCADO DO 30</p>
-        <p className="text-[9px] uppercase tracking-wider text-gray-500">Via: Administrativo</p>
+        <h1 className="text-base font-bold uppercase tracking-widest border-b border-black pb-1 inline-block">
+          30 Express
+        </h1>
+        <p className="text-[10px] font-semibold mt-1 text-gray-700">
+          MERCADO DO 30
+        </p>
+        <p className="text-[9px] uppercase tracking-wider text-gray-500">
+          Via: Administrativo
+        </p>
       </div>
 
       <div className="border-y border-dashed border-black py-1.5 mb-3 text-center bg-gray-50">
         <p className="font-bold text-sm">{formatOrderNumber(order.id)}</p>
-        <p className="text-[9px] text-gray-600">{formatDate(order.created_at)}</p>
+        <p className="text-[9px] text-gray-600">
+          {formatDate(order.created_at)}
+        </p>
       </div>
 
       <div className="mb-3">
-        <p className="font-bold text-[9px] uppercase tracking-wider mb-0.5">Cliente:</p>
-        <p className="font-semibold text-[11px] leading-tight">{order.customer_name}</p>
+        <p className="font-bold text-[9px] uppercase tracking-wider mb-0.5">
+          Cliente:
+        </p>
+        <p className="font-semibold text-[11px] leading-tight">
+          {order.customer_name}
+        </p>
         <p className="text-[10px] text-gray-700">Tel: {order.customer_phone}</p>
       </div>
 
       <div className="mb-3">
-        <p className="font-bold text-[9px] uppercase tracking-wider mb-0.5">Endereço:</p>
+        <p className="font-bold text-[9px] uppercase tracking-wider mb-0.5">
+          Endereço:
+        </p>
         <p className="leading-tight text-[10px]">{order.delivery_address}</p>
       </div>
 
+      {/* ✅ Tabela com 4 colunas: Item | Qtd | Preço | Total */}
+      <table className="w-full border-collapse text-[9px] mb-3">
+        <thead>
+          <tr className="border-b border-black">
+            <th className="text-left py-1 font-bold">Item</th>
+            <th className="text-center w-7 font-bold">Qtd</th>
+            <th className="text-right w-14 font-bold">Preço</th>
+            <th className="text-right w-16 font-bold">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {order.items?.map((item) => (
+            <tr key={item.id} className="border-b border-gray-200 border-dashed">
+              <td className="py-1 pr-1 leading-tight">{item.product_name}</td>
+              <td className="text-center">{item.quantity}</td>
+              <td className="text-right">{formatCurrency(item.unit_price)}</td>
+              <td className="text-right font-semibold">
+                {formatCurrency(item.total_price)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
       <div className="flex justify-between text-[11px] mb-4 border-y border-black border-dotted py-1.5 bg-gray-50">
         <div>
-          <p className="text-[9px] text-gray-500 uppercase tracking-wider">Status do Pedido:</p>
+          <p className="text-[9px] text-gray-500 uppercase tracking-wider">
+            Status do Pedido:
+          </p>
           <p className="font-bold capitalize text-[11px]">{order.status}</p>
         </div>
         <div className="text-right">
-          <p className="text-[9px] text-gray-500 uppercase tracking-wider">Total:</p>
-          <p className="font-bold text-sm">{formatCurrency(order.total_amount)}</p>
+          <p className="text-[9px] text-gray-500 uppercase tracking-wider">
+            Total:
+          </p>
+          <p className="font-bold text-sm">
+            {formatCurrency(order.total_amount)}
+          </p>
         </div>
       </div>
 
       <div className="mt-10 pt-4 border-t border-black border-dashed flex justify-between items-end">
         <div className="w-3/5">
-          <p className="text-[9px] uppercase tracking-wider font-bold mb-8">Assinatura do Entregador</p>
+          <p className="text-[9px] uppercase tracking-wider font-bold mb-8">
+            Assinatura do Entregador
+          </p>
           <div className="border-t border-black w-full mb-1"></div>
           <p className="text-[8px] text-gray-500">Assinatura</p>
-          <p className="text-[8px] text-gray-500 mt-2">Data: ____ / ____ / ________</p>
+          <p className="text-[8px] text-gray-500 mt-2">
+            Data: ____ / ____ / ________
+          </p>
         </div>
         <div className="text-center">
-           <div className="bg-white p-1 border border-gray-200 inline-block">
-             <QRCode value={formatOrderNumber(order.id)} size={60} />
-           </div>
-           <p className="text-[7px] text-gray-500 mt-0.5 font-mono">Rastreio</p>
+          <div className="bg-white p-1 border border-gray-200 inline-block">
+            <QRCode value={formatOrderNumber(order.id)} size={60} />
+          </div>
+          <p className="text-[7px] text-gray-500 mt-0.5 font-mono">Rastreio</p>
         </div>
       </div>
     </div>
@@ -328,11 +436,18 @@ export default function PrintOrder({
           <div className="flex items-center gap-2">
             <Printer className="w-6 h-6 text-[#2d6a4f]" />
             <div>
-              <h2 className="text-xl font-bold text-[#2d6a4f]">Imprimir Pedido</h2>
-              <p className="text-xs text-gray-500">Rolo Contínuo (80mm) — Corte Manual</p>
+              <h2 className="text-xl font-bold text-[#2d6a4f]">
+                Imprimir Pedido
+              </h2>
+              <p className="text-xs text-gray-500">
+                Rolo Contínuo (80mm) — Corte Manual
+              </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition">
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-100 rounded-full transition"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -366,25 +481,20 @@ export default function PrintOrder({
         </div>
       </div>
 
-      {/* 🛠️ CSS Corrigido para Impressão Térmica (Resolve a tela branca) */}
+      {/* CSS de Impressão */}
       <style jsx global>{`
         @media print {
           @page {
             size: 80mm auto;
             margin: 0;
           }
-          
-          /* Esconde tudo na página (site inteiro) */
           body * {
             visibility: hidden;
           }
-          
-          /* Torna visível APENAS o container do react-to-print */
-          body > div > div, body > div > div * {
+          body > div > div,
+          body > div > div * {
             visibility: visible;
           }
-
-          /* Posiciona o cupom no topo da página */
           body > div > div {
             position: absolute;
             left: 0;

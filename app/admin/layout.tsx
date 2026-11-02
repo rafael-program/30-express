@@ -83,18 +83,16 @@ export default function AdminLayout({
   }, [router]);
 
   // ============================================================
-  // FECHAR MENU AO MUDAR DE ROTA (MOBILE)
-  // ============================================================
-  useEffect(() => {
-    setIsMobileMenuOpen(false);
-  }, [pathname]);
-
-  // ============================================================
   // LOGOUT
   // ============================================================
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push('/login');
+  };
+
+  // ✅ Função auxiliar para fechar o menu
+  const closeMobileMenu = () => {
+    setIsMobileMenuOpen(false);
   };
 
   const menuItems = [
@@ -108,9 +106,6 @@ export default function AdminLayout({
     { id: 'settings', icon: Settings, label: 'Configurações', href: '/admin/settings' },
   ];
 
-  // ============================================================
-  // LOADING
-  // ============================================================
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#f5f0eb]">
@@ -122,20 +117,13 @@ export default function AdminLayout({
     );
   }
 
-  // ============================================================
-  // RENDER
-  // ============================================================
   return (
     <div className="min-h-screen bg-[#f5f0eb] flex flex-col">
-      {/* ============================================================ */}
-      {/* HEADER (TOPO) */}
-      {/* ============================================================ */}
+      {/* Header */}
       <header className="bg-[#1b4332] shadow-lg sticky top-0 z-50">
         <div className="px-3 sm:px-4 py-3">
           <div className="flex items-center justify-between gap-2">
-            {/* Lado Esquerdo: Menu + Logo */}
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-              {/* Botão Hamburguer (Mobile/Tablet) */}
               <button
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                 className="lg:hidden p-2 hover:bg-white/10 rounded-lg transition flex-shrink-0"
@@ -148,7 +136,6 @@ export default function AdminLayout({
                 )}
               </button>
 
-              {/* Logo */}
               <Link href="/admin" className="flex items-center gap-2 flex-shrink-0">
                 <div className="bg-white/20 p-1.5 rounded-lg">
                   <Leaf className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
@@ -164,15 +151,12 @@ export default function AdminLayout({
               </Link>
             </div>
 
-            {/* Lado Direito: Ações */}
             <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-              {/* Notificações */}
               <button className="relative p-2 hover:bg-white/10 rounded-lg transition">
                 <Bell className="w-5 h-5 text-white" />
                 <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
               </button>
 
-              {/* Voltar à Loja (Desktop) */}
               <Link
                 href="/"
                 className="hidden md:flex items-center gap-2 px-3 sm:px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition text-sm"
@@ -181,7 +165,6 @@ export default function AdminLayout({
                 <span className="hidden lg:inline">Voltar à Loja</span>
               </Link>
 
-              {/* Logout */}
               <button
                 onClick={handleLogout}
                 className="p-2 hover:bg-white/10 rounded-lg transition"
@@ -194,15 +177,10 @@ export default function AdminLayout({
         </div>
       </header>
 
-      {/* ============================================================ */}
-      {/* BODY: SIDEBAR + CONTEÚDO */}
-      {/* ============================================================ */}
+      {/* Body: Sidebar + Conteúdo */}
       <div className="flex flex-1 relative">
-        {/* ============================================================ */}
-        {/* SIDEBAR DESKTOP (Visível em >= lg) */}
-        {/* ============================================================ */}
+        {/* Sidebar Desktop */}
         <aside className="hidden lg:flex lg:flex-col w-64 bg-white shadow-lg sticky top-[64px] h-[calc(100vh-64px)] flex-shrink-0">
-          {/* Menu Principal */}
           <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
             {menuItems.map((item) => {
               const isActive = pathname === item.href;
@@ -223,7 +201,6 @@ export default function AdminLayout({
             })}
           </nav>
 
-          {/* Footer da Sidebar: Perfil */}
           <div className="p-4 border-t border-gray-100 flex-shrink-0">
             <div className="flex items-center gap-3 px-3 py-2 bg-[#f5f0eb] rounded-xl">
               <div className="w-10 h-10 bg-[#2d6a4f] rounded-full flex items-center justify-center text-white font-bold flex-shrink-0">
@@ -239,20 +216,15 @@ export default function AdminLayout({
           </div>
         </aside>
 
-        {/* ============================================================ */}
-        {/* MOBILE MENU (Gaveta deslizante) */}
-        {/* ============================================================ */}
+        {/* Mobile Menu (Gaveta) */}
         {isMobileMenuOpen && (
           <>
-            {/* Overlay escuro */}
             <div
               className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden"
-              onClick={() => setIsMobileMenuOpen(false)}
+              onClick={closeMobileMenu}
             ></div>
 
-            {/* Drawer */}
-            <aside className="fixed left-0 top-0 h-full w-72 sm:w-80 bg-white shadow-2xl z-50 lg:hidden flex flex-col animate-in slide-in-from-left duration-200">
-              {/* Header do Drawer */}
+            <aside className="fixed left-0 top-0 h-full w-72 sm:w-80 bg-white shadow-2xl z-50 lg:hidden flex flex-col">
               <div className="flex items-center justify-between p-5 border-b border-gray-100 flex-shrink-0">
                 <Link href="/admin" className="flex items-center gap-2">
                   <div className="bg-[#2d6a4f] p-1.5 rounded-lg">
@@ -261,7 +233,7 @@ export default function AdminLayout({
                   <span className="font-bold text-[#2d6a4f]">30 Express</span>
                 </Link>
                 <button
-                  onClick={() => setIsMobileMenuOpen(false)}
+                  onClick={closeMobileMenu}
                   className="p-2 hover:bg-gray-100 rounded-full transition"
                   aria-label="Fechar menu"
                 >
@@ -269,7 +241,6 @@ export default function AdminLayout({
                 </button>
               </div>
 
-              {/* Perfil no topo do drawer */}
               <div className="p-5 bg-[#f8f6f4] border-b border-gray-100 flex-shrink-0">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 bg-[#2d6a4f] rounded-full flex items-center justify-center text-white font-bold text-lg">
@@ -284,7 +255,6 @@ export default function AdminLayout({
                 </div>
               </div>
 
-              {/* Menu de navegação */}
               <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
                 {menuItems.map((item) => {
                   const isActive = pathname === item.href;
@@ -292,6 +262,7 @@ export default function AdminLayout({
                     <Link
                       key={item.id}
                       href={item.href}
+                      onClick={closeMobileMenu}   // ✅ Fecha ao clicar
                       className={`flex items-center gap-3 px-4 py-3 rounded-xl transition ${
                         isActive
                           ? 'bg-[#2d6a4f] text-white shadow-md'
@@ -305,17 +276,20 @@ export default function AdminLayout({
                 })}
               </nav>
 
-              {/* Footer do drawer */}
               <div className="p-4 border-t border-gray-100 space-y-2 flex-shrink-0">
                 <Link
                   href="/"
+                  onClick={closeMobileMenu}   // ✅ Fecha ao clicar
                   className="flex items-center gap-3 px-4 py-3 rounded-xl text-[#2d6a4f] bg-[#f0f7f3] hover:bg-[#e8f3ec] transition font-medium"
                 >
                   <Home className="w-5 h-5" />
                   <span>Voltar à Loja</span>
                 </Link>
                 <button
-                  onClick={handleLogout}
+                  onClick={() => {
+                    closeMobileMenu();   // ✅ Fecha antes de sair
+                    handleLogout();
+                  }}
                   className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-600 hover:bg-red-50 transition font-medium"
                 >
                   <LogOut className="w-5 h-5" />
@@ -326,13 +300,9 @@ export default function AdminLayout({
           </>
         )}
 
-        {/* ============================================================ */}
-        {/* CONTEÚDO PRINCIPAL */}
-        {/* ============================================================ */}
+        {/* Conteúdo */}
         <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8">
-          <div className="max-w-7xl mx-auto">
-            {children}
-          </div>
+          <div className="max-w-7xl mx-auto">{children}</div>
         </main>
       </div>
     </div>

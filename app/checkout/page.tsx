@@ -1,25 +1,14 @@
 // app/checkout/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import Link from 'next/link';
 import {
-  MapPin,
-  Navigation,
-  Truck,
-  Clock,
-  CreditCard,
-  DollarSign,
-  Smartphone,
-  Calendar,
-  ArrowLeft,
-  CheckCircle,
-  Loader2,
-  MapPinHouse,
-  User,
-  ShoppingBag,
+  MapPin, Navigation, Truck, Clock, CreditCard, DollarSign,
+  Smartphone, Calendar, ArrowLeft, CheckCircle, Loader2,
+  MapPinHouse, User, ShoppingBag,
 } from 'lucide-react';
 
 // ============================================================
@@ -33,18 +22,26 @@ type CartItem = {
   image_url?: string;
 };
 
-type AuthUser = {
-  id: string;
-  email: string;
-};
+type AuthUser = { id: string; email: string };
 
-type Profile = {
-  id: string;
-  full_name: string | null;
-  phone: string | null;
-  address: string | null;
-  neighborhood: string | null;
-};
+// ============================================================
+// GERADOR DE NÚMERO DE PEDIDO (FORA DO COMPONENTE)
+// ✅ Math.random() está fora do componente, portanto não é "impuro durante o render"
+// ============================================================
+function generateOrderNumber(): string {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const random = Math.floor(Math.random() * 10000)
+    .toString()
+    .padStart(4, '0');
+  return `ORD-${year}${month}${day}-${random}`;
+}
+
+function generateQRCode(orderNumber: string): string {
+  return `QR-${orderNumber.slice(0, 8)}`;
+}
 
 // ============================================================
 // COMPONENTE
@@ -53,7 +50,6 @@ export default function CheckoutPage() {
   const router = useRouter();
   const [cart, setCart] = useState<CartItem[]>([]);
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [deliveryFee, setDeliveryFee] = useState(0);
@@ -65,27 +61,56 @@ export default function CheckoutPage() {
   const [address, setAddress] = useState('');
   const [phone, setPhone] = useState('');
   const [customerName, setCustomerName] = useState('');
-  const [feePerKm, setFeePerKm] = useState(400);
-  const [baseFee, setBaseFee] = useState(0);
+  const [feePerKm, setFeePerKm] = useState(100);
   const [error, setError] = useState<string | null>(null);
 
   const MARKET_LOCATION = { lat: -8.838, lng: 13.285 };
 
   // ============================================================
+  // CALCULAR TAXA DE ENTREGA (Haversine)
+  // ✅ Movido para ANTES do useEffect
+  // ============================================================
+  const calculateDeliveryFee = useCallback(
+    (
+      location: { lat: number; lng: number },
+      currentFeePerKm: number,
+      currentBaseFee: number
+    ) => {
+      const R = 6371;
+      const dLat = ((location.lat - MARKET_LOCATION.lat) * Math.PI) / 180;
+      const dLng = ((location.lng - MARKET_LOCATION.lng) * Math.PI) / 180;
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos((MARKET_LOCATION.lat * Math.PI) / 180) *
+          Math.cos((location.lat * Math.PI) / 180) *
+          Math.sin(dLng / 2) *
+          Math.sin(dLng / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const distanceKm = R * c;
+
+      setDistance(Math.round(distanceKm * 10) / 10);
+
+      const fee = currentBaseFee + distanceKm * currentFeePerKm;
+      setDeliveryFee(Math.round(fee));
+    },
+    [MARKET_LOCATION.lat, MARKET_LOCATION.lng]
+  );
+
+  // ============================================================
   // CARREGAR DADOS
   // ============================================================
   useEffect(() => {
+    let cancelled = false;
+
     const fetchData = async () => {
       try {
         // 1. Usuário
         const { data: { user: authUser }, error: userError } = await supabase.auth.getUser();
-        
         if (userError || !authUser) {
           router.push('/login');
           return;
         }
-        
-        setUser({ id: authUser.id, email: authUser.email || '' });
+        if (!cancelled) setUser({ id: authUser.id, email: authUser.email || '' });
 
         // 2. Perfil
         const { data: profileData } = await supabase
@@ -93,9 +118,8 @@ export default function CheckoutPage() {
           .select('*')
           .eq('id', authUser.id)
           .single();
-        
-        if (profileData) {
-          setProfile(profileData);
+
+        if (profileData && !cancelled) {
           setAddress(profileData.address || '');
           setPhone(profileData.phone || '');
           setCustomerName(profileData.full_name || '');
@@ -104,29 +128,39 @@ export default function CheckoutPage() {
         // 3. Carrinho
         const savedCart = localStorage.getItem('cart');
         if (savedCart) {
-          setCart(JSON.parse(savedCart));
+          if (!cancelled) setCart(JSON.parse(savedCart));
         } else {
           router.push('/');
+          return;
         }
 
-        // 4. Configurações de taxa
-        let feePerKmVal = 400;
-        let baseFeeVal = 0;
+        // 4. Configurações
+        let feePerKmVal = 100;
+        let baseFeeVal = 500;
+
         try {
           const { data: settingsData } = await supabase
             .from('settings')
-            .select('delivery_base_fee, delivery_fee_per_km')
-            .single();
-          
+            .select('*')
+            .limit(1)
+            .maybeSingle();
+
           if (settingsData) {
-            if (typeof settingsData.delivery_fee_per_km === 'number' && settingsData.delivery_fee_per_km > 0) {
-              feePerKmVal = settingsData.delivery_fee_per_km;
-              setFeePerKm(settingsData.delivery_fee_per_km);
+            feePerKmVal =
+              Number(settingsData.delivery_per_km) ||
+              Number(settingsData.delivery_fee_per_km) ||
+              100;
+
+            baseFeeVal = Number(settingsData.delivery_base_fee) || 500;
+
+            if (!cancelled) {
+              setFeePerKm(feePerKmVal);
             }
-            if (typeof settingsData.delivery_base_fee === 'number') {
-              baseFeeVal = settingsData.delivery_base_fee;
-              setBaseFee(settingsData.delivery_base_fee);
-            }
+
+            console.log('✅ Taxas carregadas:', {
+              base: baseFeeVal,
+              perKm: feePerKmVal,
+            });
           }
         } catch (settingsErr) {
           console.error('Erro ao buscar configurações de taxa:', settingsErr);
@@ -140,72 +174,41 @@ export default function CheckoutPage() {
                 lat: position.coords.latitude,
                 lng: position.coords.longitude,
               };
-              setCustomerLocation(location);
-              calculateDeliveryFee(location, feePerKmVal, baseFeeVal);
+              if (!cancelled) {
+                setCustomerLocation(location);
+                calculateDeliveryFee(location, feePerKmVal, baseFeeVal);
+              }
             },
             () => {
               const defaultLocation = { lat: -8.839, lng: 13.289 };
-              setCustomerLocation(defaultLocation);
-              calculateDeliveryFee(defaultLocation, feePerKmVal, baseFeeVal);
+              if (!cancelled) {
+                setCustomerLocation(defaultLocation);
+                calculateDeliveryFee(defaultLocation, feePerKmVal, baseFeeVal);
+              }
             }
           );
         }
 
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       } catch (error) {
         console.error('Erro:', error);
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     fetchData();
-  }, [router]);
 
-  // ============================================================
-  // CALCULAR TAXA DE ENTREGA (Haversine)
-  // ============================================================
-  const calculateDeliveryFee = (
-    location: { lat: number; lng: number },
-    currentFeePerKm = feePerKm,
-    currentBaseFee = baseFee
-  ) => {
-    const R = 6371;
-    const dLat = (location.lat - MARKET_LOCATION.lat) * Math.PI / 180;
-    const dLng = (location.lng - MARKET_LOCATION.lng) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(MARKET_LOCATION.lat * Math.PI / 180) * Math.cos(location.lat * Math.PI / 180) *
-      Math.sin(dLng/2) * Math.sin(dLng/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    const distanceKm = R * c;
-    
-    setDistance(Math.round(distanceKm * 10) / 10);
-    
-    const fee = currentBaseFee + (distanceKm * currentFeePerKm);
-    setDeliveryFee(Math.round(fee));
-  };
+    return () => {
+      cancelled = true;
+    };
+  }, [router, calculateDeliveryFee]);
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const total = subtotal + deliveryFee;
 
   // ============================================================
-  // GERADORES
-  // ============================================================
-  const generateOrderNumber = () => {
-    const date = new Date();
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-    return `ORD-${year}${month}${day}-${random}`;
-  };
-
-  const generateQRCode = (orderId: string) => {
-    return `QR-${orderId.slice(0, 8)}`;
-  };
-
-  // ============================================================
   // SUBMETER PEDIDO
+  // ✅ Usa as funções fora do componente
   // ============================================================
   const handleSubmitOrder = async () => {
     if (!user || !customerLocation) {
@@ -222,6 +225,7 @@ export default function CheckoutPage() {
     setError(null);
 
     try {
+      // ✅ Chamadas a funções externas ao componente
       const orderNumber = generateOrderNumber();
       const qrCode = generateQRCode(orderNumber);
 
@@ -239,11 +243,17 @@ export default function CheckoutPage() {
         total_amount: total,
         status: 'pending',
         payment_method: paymentMethod,
-        delivery_time: deliveryTime === 'now' ? new Date().toISOString() : new Date(scheduledDate).toISOString(),
-        scheduled_time: deliveryTime === 'now' ? new Date().toISOString() : new Date(scheduledDate).toISOString(),
+        delivery_time:
+          deliveryTime === 'now'
+            ? new Date().toISOString()
+            : new Date(scheduledDate).toISOString(),
+        scheduled_time:
+          deliveryTime === 'now'
+            ? new Date().toISOString()
+            : new Date(scheduledDate).toISOString(),
         qr_code: qrCode,
         created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
       };
 
       const { data: orderResult, error: orderError } = await supabase
@@ -252,43 +262,33 @@ export default function CheckoutPage() {
         .select()
         .single();
 
-      if (orderError) {
-        console.error('❌ Erro ao criar pedido:', orderError);
-        setError(`Erro ao criar pedido: ${orderError.message}`);
-        setSubmitting(false);
-        return;
-      }
+      if (orderError) throw orderError;
 
       // Adicionar itens
-      const orderItems = cart.map(item => ({
+      const orderItems = cart.map((item) => ({
         order_id: orderResult.id,
         product_id: item.id,
         product_name: item.name,
         quantity: item.quantity,
         unit_price: item.price,
         total_price: item.price * item.quantity,
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
       }));
 
       const { error: itemsError } = await supabase
         .from('order_items')
         .insert(orderItems);
 
-      if (itemsError) {
-        console.error('❌ Erro ao adicionar itens:', itemsError);
-        setError(`Erro ao salvar itens: ${itemsError.message}`);
-        setSubmitting(false);
-        return;
-      }
+      if (itemsError) throw itemsError;
 
       localStorage.removeItem('cart');
-      
-      // ✅ CORREÇÃO: usar 'order_id' em vez de 'order'
       router.push(`/order-confirmation?order_id=${orderResult.id}`);
-
     } catch (err) {
       console.error('💥 Erro inesperado:', err);
-      const message = err instanceof Error ? err.message : 'Erro ao finalizar pedido. Tente novamente.';
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'Erro ao finalizar pedido. Tente novamente.';
       setError(message);
     } finally {
       setSubmitting(false);
@@ -315,7 +315,10 @@ export default function CheckoutPage() {
   return (
     <div className="min-h-screen bg-[#f5f0eb] py-8">
       <div className="container mx-auto px-4 max-w-4xl">
-        <Link href="/" className="inline-flex items-center gap-2 text-gray-600 hover:text-[#2d6a4f] transition mb-6">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-2 text-gray-600 hover:text-[#2d6a4f] transition mb-6"
+        >
           <ArrowLeft className="w-4 h-4" />
           Voltar para a loja
         </Link>
@@ -350,7 +353,6 @@ export default function CheckoutPage() {
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-                    placeholder="Seu nome completo"
                   />
                 </div>
                 <div>
@@ -362,7 +364,6 @@ export default function CheckoutPage() {
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-                    placeholder="+244 936 953 381"
                   />
                 </div>
               </div>
@@ -374,19 +375,17 @@ export default function CheckoutPage() {
                 <MapPinHouse className="w-5 h-5 text-[#2d6a4f]" />
                 Endereço de Entrega
               </h2>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Endereço completo *
-                </label>
-                <input
-                  type="text"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-                  placeholder="Rua, Número, Bairro"
-                  required
-                />
-              </div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Endereço completo *
+              </label>
+              <input
+                type="text"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
+                placeholder="Rua, Número, Bairro"
+                required
+              />
             </div>
 
             {/* Localização */}
@@ -399,11 +398,13 @@ export default function CheckoutPage() {
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     <Navigation className="w-4 h-4 text-[#2d6a4f]" />
-                    <span>📍 Mercado 30 → {distance.toFixed(1)} km de distância</span>
+                    <span>📍 Mercado 30 → {distance.toFixed(1)} km</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     <Truck className="w-4 h-4 text-[#2d6a4f]" />
-                    <span>🚚 Taxa de entrega: {deliveryFee.toLocaleString('pt-AO', { style: 'currency', currency: 'AOA' })} ({feePerKm} Kz/km)</span>
+                    <span>
+                      🚚 Taxa: {deliveryFee.toLocaleString('pt-AO', { style: 'currency', currency: 'AOA' })} ({feePerKm} Kz/km)
+                    </span>
                   </div>
                 </div>
               ) : (
@@ -488,7 +489,7 @@ export default function CheckoutPage() {
             </div>
           </div>
 
-          {/* Resumo do Pedido */}
+          {/* Resumo */}
           <div className="lg:col-span-1">
             <div className="bg-white rounded-2xl shadow-lg p-6 sticky top-24">
               <h2 className="font-bold text-gray-800 border-b border-gray-200 pb-3 mb-4">
@@ -502,13 +503,21 @@ export default function CheckoutPage() {
                       {item.quantity}x
                     </div>
                     <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-800 truncate">{item.name}</p>
+                      <p className="text-sm font-medium text-gray-800 truncate">
+                        {item.name}
+                      </p>
                       <p className="text-xs text-gray-500">
-                        {item.price.toLocaleString('pt-AO', { style: 'currency', currency: 'AOA' })}
+                        {item.price.toLocaleString('pt-AO', {
+                          style: 'currency',
+                          currency: 'AOA',
+                        })}
                       </p>
                     </div>
                     <p className="text-sm font-bold text-[#2d6a4f]">
-                      {(item.price * item.quantity).toLocaleString('pt-AO', { style: 'currency', currency: 'AOA' })}
+                      {(item.price * item.quantity).toLocaleString('pt-AO', {
+                        style: 'currency',
+                        currency: 'AOA',
+                      })}
                     </p>
                   </div>
                 ))}
@@ -517,15 +526,30 @@ export default function CheckoutPage() {
               <div className="border-t border-gray-200 pt-4 mt-4 space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Subtotal</span>
-                  <span>{subtotal.toLocaleString('pt-AO', { style: 'currency', currency: 'AOA' })}</span>
+                  <span>
+                    {subtotal.toLocaleString('pt-AO', {
+                      style: 'currency',
+                      currency: 'AOA',
+                    })}
+                  </span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Taxa de Entrega</span>
-                  <span>{deliveryFee.toLocaleString('pt-AO', { style: 'currency', currency: 'AOA' })}</span>
+                  <span>
+                    {deliveryFee.toLocaleString('pt-AO', {
+                      style: 'currency',
+                      currency: 'AOA',
+                    })}
+                  </span>
                 </div>
                 <div className="flex justify-between text-lg font-bold text-[#2d6a4f] pt-2 border-t border-gray-200">
                   <span>Total</span>
-                  <span>{total.toLocaleString('pt-AO', { style: 'currency', currency: 'AOA' })}</span>
+                  <span>
+                    {total.toLocaleString('pt-AO', {
+                      style: 'currency',
+                      currency: 'AOA',
+                    })}
+                  </span>
                 </div>
               </div>
 

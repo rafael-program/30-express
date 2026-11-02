@@ -34,10 +34,7 @@ type Settings = {
   updated_at: string;
 };
 
-type SettingsForm = Omit<
-  Settings,
-  'id' | 'created_at' | 'updated_at'
->;
+type SettingsForm = Omit<Settings, 'id' | 'created_at' | 'updated_at'>;
 
 // ============================================================
 // DEFAULTS
@@ -65,11 +62,8 @@ export default function AdminSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [settingsId, setSettingsId] = useState<string | null>(null);
-  const [formData, setFormData] =
-    useState<SettingsForm>(DEFAULT_SETTINGS);
-  const [activeTab, setActiveTab] = useState<'store' | 'delivery' | 'payment'>(
-    'store'
-  );
+  const [formData, setFormData] = useState<SettingsForm>(DEFAULT_SETTINGS);
+  const [activeTab, setActiveTab] = useState<'store' | 'delivery' | 'payment'>('store');
 
   // ============================================================
   // BUSCAR CONFIGURAÇÕES
@@ -78,7 +72,6 @@ export default function AdminSettingsPage() {
     let cancelled = false;
 
     const fetchSettings = async () => {
-      setLoading(true);
       try {
         const { data, error } = await supabase
           .from('settings')
@@ -97,14 +90,17 @@ export default function AdminSettingsPage() {
               store_email: data.store_email || '',
               store_address: data.store_address || '',
               delivery_base_fee: data.delivery_base_fee || 500,
-              delivery_per_km: data.delivery_per_km || 100,
-              min_order: data.min_order || 1000,
+              // ✅ Fallback para colunas antigas
+              delivery_per_km:
+                data.delivery_per_km || data.delivery_fee_per_km || 100,
+              min_order: data.min_order || data.min_order_value || 1000,
               open_hours: data.open_hours || '08:00',
               close_hours: data.close_hours || '20:00',
               accepts_cash: data.accepts_cash ?? true,
               accepts_card: data.accepts_card ?? true,
               accepts_transfer: data.accepts_transfer ?? false,
-              whatsapp: data.whatsapp || '',
+              // ✅ Fallback para store_whatsapp
+              whatsapp: data.whatsapp || data.store_whatsapp || '',
             });
           }
         } else {
@@ -135,13 +131,32 @@ export default function AdminSettingsPage() {
   }, []);
 
   // ============================================================
-  // SALVAR
+  // SALVAR (sincroniza as duas colunas)
   // ============================================================
   const handleSave = async () => {
     setSaving(true);
     try {
       const payload = {
-        ...formData,
+        // Colunas do admin
+        store_name: formData.store_name,
+        store_phone: formData.store_phone,
+        store_email: formData.store_email,
+        store_address: formData.store_address,
+        delivery_base_fee: formData.delivery_base_fee,
+        delivery_per_km: formData.delivery_per_km,
+        min_order: formData.min_order,
+        open_hours: formData.open_hours,
+        close_hours: formData.close_hours,
+        accepts_cash: formData.accepts_cash,
+        accepts_card: formData.accepts_card,
+        accepts_transfer: formData.accepts_transfer,
+        whatsapp: formData.whatsapp,
+
+        // ✅ Sincronizar com as colunas antigas (que o checkout usa)
+        delivery_fee_per_km: formData.delivery_per_km,
+        min_order_value: formData.min_order,
+        store_whatsapp: formData.whatsapp,
+
         updated_at: new Date().toISOString(),
       };
 
@@ -164,14 +179,15 @@ export default function AdminSettingsPage() {
       alert('✅ Configurações salvas!');
     } catch (error) {
       console.error('Erro ao salvar configurações:', error);
-      alert('❌ Erro ao salvar configurações');
+      const msg = error instanceof Error ? error.message : 'Erro desconhecido';
+      alert(`❌ Erro ao salvar: ${msg}`);
     } finally {
       setSaving(false);
     }
   };
 
   // ============================================================
-  // HELPERS DE FORM
+  // HELPER
   // ============================================================
   const updateField = <K extends keyof SettingsForm>(
     field: K,
@@ -515,7 +531,7 @@ export default function AdminSettingsPage() {
         )}
       </div>
 
-      {/* Botão de salvar inferior (para mobile) */}
+      {/* Botão de salvar inferior (mobile) */}
       <div className="flex md:hidden">
         <button
           onClick={handleSave}

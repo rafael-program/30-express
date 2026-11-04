@@ -8,7 +8,7 @@ import Link from 'next/link';
 import {
   MapPin, Navigation, Truck, Clock, CreditCard, DollarSign,
   Smartphone, Calendar, ArrowLeft, CheckCircle, Loader2,
-  MapPinHouse, User, ShoppingBag,
+  MapPinHouse, User, ShoppingBag, Home, ToggleLeft, ToggleRight,
 } from 'lucide-react';
 
 // ============================================================
@@ -24,9 +24,20 @@ type CartItem = {
 
 type AuthUser = { id: string; email: string };
 
+type DeliveryType = 'my-address' | 'other-address';
+
+// ============================================================
+// COORDENADAS DO MERCADO DO 30 (ORIGEM FIXA)
+// ============================================================
+const MARKET_LOCATION = {
+  lat: -8.95735,
+  lng: 13.48001,
+  name: 'Mercado do 30',
+  address: 'Viana, Luanda, Angola',
+};
+
 // ============================================================
 // GERADOR DE NÚMERO DE PEDIDO (FORA DO COMPONENTE)
-// ✅ Math.random() está fora do componente, portanto não é "impuro durante o render"
 // ============================================================
 function generateOrderNumber(): string {
   const date = new Date();
@@ -64,11 +75,14 @@ export default function CheckoutPage() {
   const [feePerKm, setFeePerKm] = useState(100);
   const [error, setError] = useState<string | null>(null);
 
-  const MARKET_LOCATION = { lat: -8.838, lng: 13.285 };
+  // ✅ NOVOS ESTADOS PARA ENDEREÇO DE ENTREGA
+  const [deliveryType, setDeliveryType] = useState<DeliveryType>('my-address');
+  const [otherAddress, setOtherAddress] = useState('');
+  const [otherLat, setOtherLat] = useState<number | null>(null);
+  const [otherLng, setOtherLng] = useState<number | null>(null);
 
   // ============================================================
-  // CALCULAR TAXA DE ENTREGA (Haversine)
-  // ✅ Movido para ANTES do useEffect
+  // CALCULAR TAXA DE ENTREGA (Haversine) — ORIGEM FIXA: MERCADO DO 30
   // ============================================================
   const calculateDeliveryFee = useCallback(
     (
@@ -93,7 +107,7 @@ export default function CheckoutPage() {
       const fee = currentBaseFee + distanceKm * currentFeePerKm;
       setDeliveryFee(Math.round(fee));
     },
-    [MARKET_LOCATION.lat, MARKET_LOCATION.lng]
+    []
   );
 
   // ============================================================
@@ -150,23 +164,17 @@ export default function CheckoutPage() {
               Number(settingsData.delivery_per_km) ||
               Number(settingsData.delivery_fee_per_km) ||
               100;
-
             baseFeeVal = Number(settingsData.delivery_base_fee) || 500;
 
             if (!cancelled) {
               setFeePerKm(feePerKmVal);
             }
-
-            console.log('✅ Taxas carregadas:', {
-              base: baseFeeVal,
-              perKm: feePerKmVal,
-            });
           }
         } catch (settingsErr) {
           console.error('Erro ao buscar configurações de taxa:', settingsErr);
         }
 
-        // 5. Geolocalização
+        // 5. Geolocalização (padrão: endereço do cliente)
         if (navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(
             (position) => {
@@ -203,20 +211,80 @@ export default function CheckoutPage() {
     };
   }, [router, calculateDeliveryFee]);
 
+  // ============================================================
+  // ALTERNAR ENTRE ENDEREÇO DO CLIENTE E OUTRO ENDEREÇO
+  // ============================================================
+  const handleDeliveryTypeChange = (type: DeliveryType) => {
+    setDeliveryType(type);
+
+    if (type === 'my-address' && customerLocation) {
+      calculateDeliveryFee(customerLocation, feePerKm, 500);
+    } else if (type === 'other-address' && otherLat && otherLng) {
+      calculateDeliveryFee({ lat: otherLat, lng: otherLng }, feePerKm, 500);
+    } else {
+      setDeliveryFee(0);
+      setDistance(0);
+    }
+  };
+
+  // ============================================================
+  // OBTER LOCALIZAÇÃO DO OUTRO ENDEREÇO (VIA GPS DO DISPOSITIVO)
+  // ============================================================
+  const handleGetOtherLocation = () => {
+    if (!navigator.geolocation) {
+      setError('Geolocalização não suportada neste dispositivo');
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        setOtherLat(lat);
+        setOtherLng(lng);
+        calculateDeliveryFee({ lat, lng }, feePerKm, 500);
+        alert('✅ Localização do outro endereço capturada!');
+      },
+      () => {
+        setError('Não foi possível obter a localização do outro endereço');
+      }
+    );
+  };
+
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const total = subtotal + deliveryFee;
 
   // ============================================================
   // SUBMETER PEDIDO
-  // ✅ Usa as funções fora do componente
   // ============================================================
   const handleSubmitOrder = async () => {
-    if (!user || !customerLocation) {
+    if (!user) {
+      setError('Utilizador não autenticado');
+      return;
+    }
+
+    // Validar localização
+    if (deliveryType === 'my-address' && !customerLocation) {
       setError('Localização não disponível');
       return;
     }
 
-    if (!address.trim()) {
+    if (deliveryType === 'other-address') {
+      if (!otherAddress.trim()) {
+        setError('Por favor, informe o endereço de entrega alternativo');
+        return;
+      }
+      if (!otherLat || !otherLng) {
+        setError('Por favor, capture a localização do endereço alternativo');
+        return;
+      }
+    }
+
+    const finalAddress = deliveryType === 'my-address' ? address : otherAddress;
+    const finalLat = deliveryType === 'my-address' ? customerLocation?.lat : otherLat;
+    const finalLng = deliveryType === 'my-address' ? customerLocation?.lng : otherLng;
+
+    if (!finalAddress.trim()) {
       setError('Por favor, informe o endereço de entrega');
       return;
     }
@@ -225,7 +293,6 @@ export default function CheckoutPage() {
     setError(null);
 
     try {
-      // ✅ Chamadas a funções externas ao componente
       const orderNumber = generateOrderNumber();
       const qrCode = generateQRCode(orderNumber);
 
@@ -233,11 +300,11 @@ export default function CheckoutPage() {
         client_id: user.id,
         customer_name: customerName || 'Cliente',
         customer_phone: phone || 'Não informado',
-        delivery_address: address.trim(),
-        delivery_lat: customerLocation.lat,
-        delivery_lng: customerLocation.lng,
-        customer_lat: customerLocation.lat,
-        customer_lng: customerLocation.lng,
+        delivery_address: finalAddress.trim(),
+        delivery_lat: finalLat,
+        delivery_lng: finalLng,
+        customer_lat: customerLocation?.lat || finalLat,
+        customer_lng: customerLocation?.lng || finalLng,
         delivery_fee: deliveryFee,
         subtotal: subtotal,
         total_amount: total,
@@ -264,7 +331,6 @@ export default function CheckoutPage() {
 
       if (orderError) throw orderError;
 
-      // Adicionar itens
       const orderItems = cart.map((item) => ({
         order_id: orderResult.id,
         product_id: item.id,
@@ -286,9 +352,7 @@ export default function CheckoutPage() {
     } catch (err) {
       console.error('💥 Erro inesperado:', err);
       const message =
-        err instanceof Error
-          ? err.message
-          : 'Erro ao finalizar pedido. Tente novamente.';
+        err instanceof Error ? err.message : 'Erro ao finalizar pedido.';
       setError(message);
     } finally {
       setSubmitting(false);
@@ -331,7 +395,6 @@ export default function CheckoutPage() {
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl mb-6">
             <p className="font-medium">❌ {error}</p>
-            <p className="text-sm mt-1">Verifique os dados e tente novamente.</p>
           </div>
         )}
 
@@ -369,46 +432,124 @@ export default function CheckoutPage() {
               </div>
             </div>
 
-            {/* Endereço */}
+            {/* ✅ ENDEREÇO DE ORIGEM (FIXO) */}
+            <div className="bg-white rounded-2xl shadow-lg p-6">
+              <h2 className="font-bold text-gray-800 flex items-center gap-2 mb-4">
+                <Home className="w-5 h-5 text-[#2d6a4f]" />
+                Endereço de Origem
+              </h2>
+              <div className="p-4 bg-[#f0f7f3] border border-[#d8f3dc] rounded-xl">
+                <p className="font-semibold text-[#2d6a4f] text-sm">
+                  🏪 {MARKET_LOCATION.name}
+                </p>
+                <p className="text-xs text-gray-600 mt-1">
+                  {MARKET_LOCATION.address}
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  GPS: {MARKET_LOCATION.lat}, {MARKET_LOCATION.lng}
+                </p>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Todos os produtos são enviados a partir do Mercado do 30.
+              </p>
+            </div>
+
+            {/* ✅ ESCOLHA DO ENDEREÇO DE ENTREGA */}
             <div className="bg-white rounded-2xl shadow-lg p-6">
               <h2 className="font-bold text-gray-800 flex items-center gap-2 mb-4">
                 <MapPinHouse className="w-5 h-5 text-[#2d6a4f]" />
                 Endereço de Entrega
               </h2>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Endereço completo *
-              </label>
-              <input
-                type="text"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-                placeholder="Rua, Número, Bairro"
-                required
-              />
-            </div>
 
-            {/* Localização */}
-            <div className="bg-white rounded-2xl shadow-lg p-6">
-              <h2 className="font-bold text-gray-800 flex items-center gap-2 mb-4">
-                <MapPin className="w-5 h-5 text-[#2d6a4f]" />
-                Localização
-              </h2>
-              {customerLocation ? (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <Navigation className="w-4 h-4 text-[#2d6a4f]" />
-                    <span>📍 Mercado 30 → {distance.toFixed(1)} km</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <Truck className="w-4 h-4 text-[#2d6a4f]" />
-                    <span>
-                      🚚 Taxa: {deliveryFee.toLocaleString('pt-AO', { style: 'currency', currency: 'AOA' })} ({feePerKm} Kz/km)
-                    </span>
-                  </div>
+              {/* Toggle: Meu endereço vs Outro endereço */}
+              <div className="flex gap-3 mb-4">
+                <button
+                  onClick={() => handleDeliveryTypeChange('my-address')}
+                  className={`flex-1 py-2 rounded-xl border-2 transition flex items-center justify-center gap-2 ${
+                    deliveryType === 'my-address'
+                      ? 'border-[#2d6a4f] bg-[#f0f7f0] text-[#2d6a4f] font-medium'
+                      : 'border-gray-200 text-gray-500'
+                  }`}
+                >
+                  <Home className="w-4 h-4" />
+                  Meu Endereço
+                </button>
+                <button
+                  onClick={() => handleDeliveryTypeChange('other-address')}
+                  className={`flex-1 py-2 rounded-xl border-2 transition flex items-center justify-center gap-2 ${
+                    deliveryType === 'other-address'
+                      ? 'border-[#2d6a4f] bg-[#f0f7f0] text-[#2d6a4f] font-medium'
+                      : 'border-gray-200 text-gray-500'
+                  }`}
+                >
+                  <MapPin className="w-4 h-4" />
+                  Outro Endereço
+                </button>
+              </div>
+
+              {/* Endereço do Cliente */}
+              {deliveryType === 'my-address' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Endereço completo *
+                  </label>
+                  <input
+                    type="text"
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
+                    placeholder="Rua, Número, Bairro"
+                  />
+                  {customerLocation && (
+                    <div className="mt-3 space-y-1">
+                      <p className="text-sm text-gray-600 flex items-center gap-2">
+                        <Navigation className="w-4 h-4 text-[#2d6a4f]" />
+                        Distância: {distance.toFixed(1)} km
+                      </p>
+                      <p className="text-sm text-gray-600 flex items-center gap-2">
+                        <Truck className="w-4 h-4 text-[#2d6a4f]" />
+                        Taxa: {formatCurrency(deliveryFee)} ({feePerKm} Kz/km)
+                      </p>
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <p className="text-gray-500">Carregando localização...</p>
+              )}
+
+              {/* Outro Endereço */}
+              {deliveryType === 'other-address' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Endereço completo *
+                    </label>
+                    <input
+                      type="text"
+                      value={otherAddress}
+                      onChange={(e) => setOtherAddress(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
+                      placeholder="Rua, Número, Bairro (outro endereço)"
+                    />
+                  </div>
+                  <button
+                    onClick={handleGetOtherLocation}
+                    className="w-full py-2 bg-[#a7c957] text-white rounded-xl hover:bg-[#8fb84a] transition font-medium flex items-center justify-center gap-2"
+                  >
+                    <Navigation className="w-4 h-4" />
+                    Capturar Localização do Outro Endereço
+                  </button>
+                  {otherLat && otherLng && (
+                    <div className="p-3 bg-[#f0f7f3] rounded-xl">
+                      <p className="text-sm text-gray-600 flex items-center gap-2">
+                        <Navigation className="w-4 h-4 text-[#2d6a4f]" />
+                        Distância: {distance.toFixed(1)} km
+                      </p>
+                      <p className="text-sm text-gray-600 flex items-center gap-2">
+                        <Truck className="w-4 h-4 text-[#2d6a4f]" />
+                        Taxa: {formatCurrency(deliveryFee)} ({feePerKm} Kz/km)
+                      </p>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 
@@ -483,9 +624,6 @@ export default function CheckoutPage() {
                   );
                 })}
               </div>
-              <p className="text-xs text-gray-500 mt-2 text-center">
-                Pagamento realizado no momento da entrega
-              </p>
             </div>
           </div>
 
@@ -507,17 +645,11 @@ export default function CheckoutPage() {
                         {item.name}
                       </p>
                       <p className="text-xs text-gray-500">
-                        {item.price.toLocaleString('pt-AO', {
-                          style: 'currency',
-                          currency: 'AOA',
-                        })}
+                        {formatCurrency(item.price)}
                       </p>
                     </div>
                     <p className="text-sm font-bold text-[#2d6a4f]">
-                      {(item.price * item.quantity).toLocaleString('pt-AO', {
-                        style: 'currency',
-                        currency: 'AOA',
-                      })}
+                      {formatCurrency(item.price * item.quantity)}
                     </p>
                   </div>
                 ))}
@@ -526,37 +658,22 @@ export default function CheckoutPage() {
               <div className="border-t border-gray-200 pt-4 mt-4 space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Subtotal</span>
-                  <span>
-                    {subtotal.toLocaleString('pt-AO', {
-                      style: 'currency',
-                      currency: 'AOA',
-                    })}
-                  </span>
+                  <span>{formatCurrency(subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Taxa de Entrega</span>
-                  <span>
-                    {deliveryFee.toLocaleString('pt-AO', {
-                      style: 'currency',
-                      currency: 'AOA',
-                    })}
-                  </span>
+                  <span>{formatCurrency(deliveryFee)}</span>
                 </div>
                 <div className="flex justify-between text-lg font-bold text-[#2d6a4f] pt-2 border-t border-gray-200">
                   <span>Total</span>
-                  <span>
-                    {total.toLocaleString('pt-AO', {
-                      style: 'currency',
-                      currency: 'AOA',
-                    })}
-                  </span>
+                  <span>{formatCurrency(total)}</span>
                 </div>
               </div>
 
               <button
                 onClick={handleSubmitOrder}
-                disabled={submitting || !customerLocation}
-                className="w-full mt-6 py-3 bg-[#2d6a4f] text-white rounded-2xl hover:bg-[#1b4332] transition font-medium shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                disabled={submitting}
+                className="w-full mt-6 py-3 bg-[#2d6a4f] text-white rounded-2xl hover:bg-[#1b4332] transition font-medium shadow-lg hover:shadow-xl disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {submitting ? (
                   <>
@@ -570,16 +687,21 @@ export default function CheckoutPage() {
                   </>
                 )}
               </button>
-
-              {!customerLocation && (
-                <p className="text-center text-xs text-red-500 mt-2">
-                  Aguardando localização...
-                </p>
-              )}
             </div>
           </div>
         </div>
       </div>
     </div>
   );
+}
+
+// ============================================================
+// FORMATADOR
+// ============================================================
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat('pt-AO', {
+    style: 'currency',
+    currency: 'AOA',
+    minimumFractionDigits: 0,
+  }).format(value || 0);
 }

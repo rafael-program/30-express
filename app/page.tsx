@@ -388,6 +388,7 @@ export default function HomePage() {
 
       {/* Hero */}
       <section className="relative bg-gradient-to-b from-[#1b4332] via-[#245741] to-[#2d6a4f] text-white py-14 md:py-24 overflow-hidden">
+        <HeroSlider />
         <div className="absolute -top-24 right-1/4 w-96 h-96 bg-[#52b788]/20 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-24 left-10 w-80 h-80 bg-[#f4a261]/15 rounded-full blur-3xl pointer-events-none" />
         <div className="container mx-auto px-4 relative z-10">
@@ -854,5 +855,71 @@ function ProductCard({ product, viewMode, isFavorite, onToggleFavorite, onAddToC
         </div>
       </div>
     </article>
+  );
+}
+
+// ============================================================
+// SLIDE ROTATIVO DO HERO
+// ============================================================
+const heroSlides = [
+  { src: '/hero/carnes.jpg', alt: 'Cortes de carne fresca selecionada' },
+  { src: '/hero/batata-doce.jpg', alt: 'Batata-doce fresca' },
+  { src: '/hero/abacate.jpg', alt: 'Abacates frescos' },
+  // Para adicionar mais (até 5), coloque a imagem em public/hero/ e inclua aqui:
+  // { src: '/hero/frutas.jpg', alt: 'Frutas da época' },
+  // { src: '/hero/verduras.jpg', alt: 'Verduras frescas' },
+];
+
+function HeroSlider() {
+  const [current, setCurrent] = useState(0);
+  const [paused, setPaused] = useState(false);
+
+  useEffect(() => {
+    if (paused) return;
+    const timer = setInterval(() => {
+      setCurrent((c) => (c + 1) % heroSlides.length);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [paused]);
+
+  return (
+    <div className="absolute inset-0 pointer-events-none" aria-roledescription="carrossel">
+      {heroSlides.map((slide, i) => (
+        <Image
+          key={slide.src}
+          src={slide.src}
+          alt={slide.alt}
+          fill
+          sizes="100vw"
+          priority={i === 0}
+          aria-hidden={i !== current}
+          className={`object-cover transition-opacity duration-1000 motion-reduce:transition-none ${
+            i === current ? 'opacity-100' : 'opacity-0'
+          }`}
+        />
+      ))}
+
+      {/* Camada escura para manter o texto legível */}
+      <div className="absolute inset-0 bg-gradient-to-r from-[#1b4332]/90 via-[#1b4332]/70 to-[#1b4332]/40" />
+
+      {/* Indicadores */}
+      <div
+        className="absolute bottom-4 inset-x-0 z-20 flex items-center justify-center gap-2 pointer-events-auto"
+        onMouseEnter={() => setPaused(true)}
+        onMouseLeave={() => setPaused(false)}
+      >
+        {heroSlides.map((slide, i) => (
+          <button
+            key={slide.src}
+            onClick={() => setCurrent(i)}
+            aria-label={`Ir para imagem ${i + 1}`}
+            aria-current={i === current}
+            className={`h-2 rounded-full transition-all duration-300 ${focusRing} ${
+              i === current ? 'w-8 bg-[#f4a261]' : 'w-2 bg-white/50 hover:bg-white/80'
+            }`}
+          />
+        ))}
+      </div>
+    </div>
   );
 }

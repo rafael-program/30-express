@@ -8,10 +8,9 @@ import Link from 'next/link';
 import {
   MapPin, Navigation, Truck, Clock, CreditCard, DollarSign,
   Smartphone, Calendar, ArrowLeft, CheckCircle, Loader2,
-  MapPinHouse, User, ShoppingBag, Home, ChevronRight,
-  Sparkles, Store, Route, Wallet, PartyPopper,
+  MapPinHouse, User, Home, ChevronRight,
+  Sparkles, Store, Route, Wallet, PartyPopper, Phone,
 } from 'lucide-react';
-
 // ============================================================
 // TIPOS
 // ============================================================
